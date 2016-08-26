@@ -17,11 +17,17 @@ class oeem(luigi.Config):
     uploaded_base_path   = luigi.Parameter()
     formatted_base_path  = luigi.Parameter()
 
+    OEEM_FORMAT_OUTPUT_BASE_PATH = luigi.Parameter(default='oeem-format')
 
     _target_class = None
     _flag_target_class = None
     _storage = None
     _datastore = None
+
+    def __init__(self):
+        super(oeem, self).__init__()
+        self.OEEM_FORMAT_PROJECT_OUTPUT_DIR      = os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'projects')
+        self.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR = os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'consumptions')
 
     @property
     def storage(self):

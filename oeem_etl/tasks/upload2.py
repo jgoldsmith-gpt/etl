@@ -27,11 +27,6 @@ from oeem_etl.uploader import upload_project_dataframe, upload_consumption_dataf
 import oeem_etl.config as config
 from oeem_etl.paths import mirror_path
 
-
-OEEM_FORMAT_OUTPUT_BASE_PATH = 'oeem-format'
-OEEM_FORMAT_PROJECT_OUTPUT_DIR = os.path.join(OEEM_FORMAT_OUTPUT_BASE_PATH, 'projects')
-OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR = os.path.join(OEEM_FORMAT_OUTPUT_BASE_PATH, 'consumptions')
-
 class FetchFile(luigi.ExternalTask):
     """Fetchs file from either local disk or cloud storage"""
     raw_file_path = luigi.Parameter()
@@ -124,8 +119,8 @@ class LoadAll(luigi.WrapperTask):
 
     def requires(self):
 
-        project_paths     = config.oeem.storage.get_existing_paths(OEEM_FORMAT_PROJECT_OUTPUT_DIR)
-        consumption_paths = config.oeem.storage.get_existing_paths(OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
+        project_paths     = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
+        consumption_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
 
         def filter_paths(paths):
             return [path for path in paths if not path.endswith('.DS_Store')]
