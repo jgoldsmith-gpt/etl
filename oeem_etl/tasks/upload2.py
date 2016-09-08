@@ -117,16 +117,25 @@ class UploadConsumption(luigi.Task):
 
 class LoadAll(luigi.WrapperTask):
 
+    pattern = luigi.Parameter(default='', description="Only upload consumption files that contain the string `pattern`")
+
     def requires(self):
 
         project_paths     = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
         consumption_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
 
-        def filter_paths(paths):
-            return [path for path in paths if not path.endswith('.DS_Store')]
+        def filter_paths(paths, apply_pattern=False):
+            paths = [path for path in paths if not path.endswith('.DS_Store')]
+            if self.pattern and apply_pattern:
+                paths = [path for path in paths if self.pattern in path]
+            return paths
 
         project_paths = filter_paths(project_paths)
-        consumption_paths = filter_paths(consumption_paths)
+        consumption_paths = filter_paths(consumption_paths, apply_pattern=True)
+
+        print consumption_paths
+
+        assert False
 
         return [
             UploadConsumption(path, project_paths)
