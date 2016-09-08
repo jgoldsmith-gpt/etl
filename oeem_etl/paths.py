@@ -1,11 +1,12 @@
 import os
 
-def gather_paths(root):
+def gather_paths(root, filter_extension='csv'):
+    """Gathers files with a certain extension in a directory (and nested subdirectories)"""
     paths = []
     for subdir, dirs, files in os.walk(root):
         for filename in files:
             full_path = os.path.join(subdir, filename)
-            if full_path.endswith("csv"):
+            if full_path.endswith(filter_extension):
                 paths.append(full_path)
     return paths
 
