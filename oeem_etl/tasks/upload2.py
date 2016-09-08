@@ -133,10 +133,6 @@ class LoadAll(luigi.WrapperTask):
         project_paths = filter_paths(project_paths)
         consumption_paths = filter_paths(consumption_paths, apply_pattern=True)
 
-        print consumption_paths
-
-        assert False
-
         return [
             UploadConsumption(path, project_paths)
             for path in consumption_paths
