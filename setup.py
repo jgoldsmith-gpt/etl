@@ -29,7 +29,6 @@ setup(
         'pyopenssl',
         'ndg-httpsclient', 
         'pyasn1',
-
     ],
     keywords='open energy efficiency meter etl espi greenbutton',
 )

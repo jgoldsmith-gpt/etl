@@ -58,4 +58,10 @@ class oeem(luigi.Config):
     def full_path(self, filename):
         return os.path.join(self.local_data_directory, filename)
 
-oeem = oeem()
+# If config files are missing, don't die right away
+# Useful for CI
+try:
+    oeem = oeem()
+except:
+    pass
+
