@@ -798,37 +798,27 @@ class LinkAPIHelper(LinkAPIClient):
                 job_statuses["no_response"].append({"job_id":job_id, "status_code":job_response.status_code})
         return job_statuses        
 
-    def get_interval_json(self, profile_id, meter_id, ym):
+    def download_interval_data(self, file_name, profile_id, meter_id, ym):
         """Gets interval data but converts the raw CSV response to JSON to
         match other types of responses from the service
 
         Parameters
         ----------
+        file_name : full path to save file
         profile_id : id of the profile for which to get interval
         meter_id : id of meter for which to get interval
         ym : Year and month (YYYY-MM format) for which to get interval
 
         Returns
         -------
-        str
-            JSON formatted string with a "success" boolean indicating service
-            was successfully contacted and an "interval_data" section containing
-            converted CSV data
+        bool
+            True if file successfully written, False if not
         """
         response = self.interval_retrieve(profile_id, meter_id, ym)
-        data = {
-            "success": "false",
-            "interval_data": {}
-        }
         if response.success():
-            data['success'] = "true"
-            #raw_lines = str(response.data).split('\n')
-            #good_lines = ()
-            #for line in raw_lines:
-            #    if line.startswith('')
-            data['interval_data'] = response.data
+            file = open(file_name, 'w')
+            file.write(response.data)
+            file.close()
+            return True
         else:
-            data['status'] = "false"
-            data['interval_data'] = response.status_code
-
-        return data
+            return False
