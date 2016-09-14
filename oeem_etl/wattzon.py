@@ -804,10 +804,14 @@ class LinkAPIHelper(LinkAPIClient):
 
         Parameters
         ----------
-        file_name : full path to save file
-        profile_id : id of the profile for which to get interval
-        meter_id : id of meter for which to get interval
-        ym : Year and month (YYYY-MM format) for which to get interval
+        file_name : str
+            full path to save file
+        profile_id : int
+            id of the profile for which to get interval
+        meter_id : str
+            id of meter for which to get interval
+        ym : str
+            Year and month (YYYY-MM format) for which to get interval
 
         Returns
         -------
@@ -822,3 +826,54 @@ class LinkAPIHelper(LinkAPIClient):
             return True
         else:
             return False
+
+    def download_all_interval_data(self, folder):
+        """Gets ALL available interval data across all profiles and
+        puts it in a single folder with the following naming convention:
+        <profile_id>_<meter_id>_<ym>_interval.csv
+
+        Parameters
+        ----------
+        folder : str
+            path to directory to put downloaded data
+
+        Returns
+        -------
+        str
+            JSON formatted string containing info about what was
+            and was not successfully downloaded
+        """
+        if not folder.endswith('/'):
+            folder += '/'
+        rtn = {}
+        profile_response = self.profile_list()
+        for profile in profile_response.data:
+            rtn[profile] = {
+                "success": [],
+                "error": []
+            }
+            print "getting profile {}...".format(profile)
+            interval_list_response = self.interval_list(profile)
+            if interval_list_response.success():
+                for interval in interval_list_response.data:
+                    meter_id = interval["meter_id"]
+                    month_id = interval["month_id"]
+                    interval_response = self.interval_retrieve(profile, meter_id, month_id)
+                    if interval_response.success():
+                        file_name = "{}_{}_{}_interval.csv".format(profile, meter_id, month_id)
+                        fh = open(file_name, 'w')
+                        fh.write(interval_response.data)
+                        fh.close()
+                        rtn[profile]["success"].append(file_name)
+                    else:
+                        err_data = {
+                            "profile_id" : profile,
+                            "meter_id" : meter_id,
+                            "month_id" : month_id,
+                            "data" : interval_response.data
+                        }
+                        rtn[profile]["error"].append(err_data)
+            else:
+                rtn[profile]["error"].append(interval_list_response.data)
+
+        return rtn
