@@ -5,9 +5,9 @@ from oeem_etl.csvs import read_csv_file
 
 class AuditFormattedData(luigi.Task):
     """Audit data after running formatting tasks
-
-    This can be factored out into the base module...
     """
+
+    pattern = luigi.Parameter(default='', description="Only audit files that contain the string `pattern`")
 
     def requires(self):
 
@@ -16,11 +16,14 @@ class AuditFormattedData(luigi.Task):
         project_paths     = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
         consumption_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
 
-        def filter_paths(paths):
-            return [path for path in paths if not path.endswith('.DS_Store')]
+        def filter_paths(paths, apply_pattern=False):
+            paths = [path for path in paths if not path.endswith('.DS_Store')]
+            if self.pattern and apply_pattern:
+                paths = [path for path in paths if self.pattern in path]
+            return paths
 
         project_paths = filter_paths(project_paths)
-        consumption_paths = filter_paths(consumption_paths)
+        consumption_paths = filter_paths(consumption_paths, apply_pattern=True)
 
         return {
             'projects': [FetchFile(path) for path in project_paths],

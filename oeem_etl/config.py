@@ -27,6 +27,7 @@ class oeem(luigi.Config):
     def __init__(self):
         super(oeem, self).__init__()
         self.OEEM_FORMAT_PROJECT_OUTPUT_DIR      = os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'projects')
+        self.OEEM_FORMAT_PROJECTS_PATH           = os.path.join(self.OEEM_FORMAT_PROJECT_OUTPUT_DIR, 'projects.csv')
         self.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR = os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'consumptions')
 
     @property

@@ -13,7 +13,7 @@ There can nested subdirectories in `projects` and `consumptions`.
 
 Top-level tasks:
 
-    UploadProjects
+    LoadProjects
     UploadConsumptions
     LoadAll
 
@@ -63,11 +63,10 @@ class UploadProject(luigi.Task):
         return config.oeem.flag_target_class(uploaded_path)
 
 
-class UploadProjects(luigi.WrapperTask):
-    project_paths = luigi.ListParameter()
-    
+class LoadProjects(luigi.WrapperTask):
     def requires(self):
-        return [UploadProject(path) for path in self.project_paths]
+        project_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
+        return [UploadProject(path) for path in project_paths]
 
 def formatted2uploaded_path(path):
     return mirror_path(path, 
@@ -81,7 +80,7 @@ class UploadConsumption(luigi.Task):
     def requires(self):
         return {
             'file': FetchFile(self.path),
-            'projects': UploadProjects(self.project_paths)
+            'projects': LoadProjects()
         }
 
     def load_dataset(self):
