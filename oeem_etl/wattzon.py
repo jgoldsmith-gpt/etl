@@ -714,14 +714,16 @@ class LinkAPIHelper(LinkAPIClient):
         super(LinkAPIHelper, self).__init__(**kwargs)
         self.key = None
 
-    def start_jobs(self, mode='interval'):
+    def start_jobs(self, mode='interval', tags=[]):
         """Starts jobs for all profiles and returns dictionary of successfully
         started jobs as well as jobs that failed to start
 
         Parameters
         ----------
-        mode : :obj:'str', optional
+        mode : str, optional
             Type of job to start for all profiles, i.e. 'bill' (Default 'interval')
+        tags : list, optional
+            List of tags to get jobs for, default is empty (start jobs for all)
 
         Returns
         -------
@@ -748,7 +750,10 @@ class LinkAPIHelper(LinkAPIClient):
             "started": [],
             "failed": []
         }
-        profile_response = self.profile_list()
+        if len(tags) == 0:
+            profile_response = self.profile_list()
+        else:
+            profile_response = self.profile_list(tags=tags)
         profiles = profile_response.data
         for profile in profiles:
             job_response = self.job_start(profile)
@@ -827,7 +832,7 @@ class LinkAPIHelper(LinkAPIClient):
         else:
             return False
 
-    def download_all_interval_data(self, folder):
+    def download_all_interval_data(self, folder, tags=[]):
         """Gets ALL available interval data across all profiles and
         puts it in a single folder with the following naming convention:
         <profile_id>_<meter_id>_<ym>_interval.csv
@@ -836,6 +841,9 @@ class LinkAPIHelper(LinkAPIClient):
         ----------
         folder : str
             path to directory to put downloaded data
+        tags : str, optional
+            list of tags to filter profiles to download intervals for,
+            default to empty (get all)
 
         Returns
         -------
@@ -846,13 +854,15 @@ class LinkAPIHelper(LinkAPIClient):
         if not folder.endswith('/'):
             folder += '/'
         rtn = {}
-        profile_response = self.profile_list()
+        if len(tags) == 0:
+            profile_response = self.profile_list()
+        else:
+            profile_response = self.profile_list(tags=tags)
         for profile in profile_response.data:
             rtn[profile] = {
                 "success": [],
                 "error": []
             }
-            print "getting profile {}...".format(profile)
             interval_list_response = self.interval_list(profile)
             if interval_list_response.success():
                 for interval in interval_list_response.data:
