@@ -853,13 +853,14 @@ class LinkAPIHelper(LinkAPIClient):
         """
         if not folder.endswith('/'):
             folder += '/'
-        rtn = {}
+        rtn = []
         if len(tags) == 0:
             profile_response = self.profile_list()
         else:
             profile_response = self.profile_list(tags=tags)
         for profile in profile_response.data:
-            rtn[profile] = {
+            rtn_data = {
+                "profile_id": profile,
                 "success": [],
                 "error": []
             }
@@ -874,7 +875,7 @@ class LinkAPIHelper(LinkAPIClient):
                         fh = open(file_name, 'w')
                         fh.write(interval_response.data)
                         fh.close()
-                        rtn[profile]["success"].append(file_name)
+                        rtn_data["success"].append(file_name)
                     else:
                         err_data = {
                             "profile_id" : profile,
@@ -882,8 +883,9 @@ class LinkAPIHelper(LinkAPIClient):
                             "month_id" : month_id,
                             "data" : interval_response.data
                         }
-                        rtn[profile]["error"].append(err_data)
+                        rtn_data["error"].append(err_data)
             else:
-                rtn[profile]["error"].append(interval_list_response.data)
+                rtn_data["error"].append(interval_list_response.data)
+            rtn.append(rtn_data)
 
         return rtn
