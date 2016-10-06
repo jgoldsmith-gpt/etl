@@ -24,7 +24,7 @@ setup(
         'boto',
         'py',
         'google-api-python-client',
-        'oauth2client',
+        'oauth2client>=3.0.0',
         'requests>=2.10.0',
         'pyopenssl',
         'ndg-httpsclient', 
