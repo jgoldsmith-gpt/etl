@@ -27,12 +27,14 @@ from oeem_etl.uploader import upload_project_dataframe, upload_consumption_dataf
 import oeem_etl.config as config
 from oeem_etl.paths import mirror_path
 
+
 class FetchFile(luigi.ExternalTask):
     """Fetchs file from either local disk or cloud storage"""
     raw_file_path = luigi.Parameter()
 
     def output(self):
         return config.oeem.target_class(self.raw_file_path)
+
 
 class UploadProject(luigi.Task):
     path = luigi.Parameter()
@@ -68,15 +70,17 @@ class LoadProjects(luigi.WrapperTask):
         project_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
         return [UploadProject(path) for path in project_paths]
 
+
 def formatted2uploaded_path(path):
-    return mirror_path(path, 
-                       config.oeem.full_path(config.oeem.formatted_base_path), 
+    return mirror_path(path,
+                       config.oeem.full_path(config.oeem.formatted_base_path),
                        config.oeem.full_path(config.oeem.uploaded_base_path))
+
 
 class UploadConsumption(luigi.Task):
     path = luigi.Parameter()
     project_paths = luigi.ListParameter()
-    
+
     def requires(self):
         return {
             'file': FetchFile(self.path),
@@ -136,6 +140,3 @@ class LoadAll(luigi.WrapperTask):
             UploadConsumption(path, project_paths)
             for path in consumption_paths
         ]
-
-
-

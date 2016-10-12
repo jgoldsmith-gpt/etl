@@ -9,19 +9,13 @@ import re
 import json
 import logging
 
-try:
-    # 0.3
-    from eemeter.consumption import ConsumptionData
-except:
-    # 0.4
-    pass
-
 
 __all__ = [
     'upload_project_dataframe',
     'upload_consumption_dataframe',
     'upload_consumption_dataframe_faster',
 ]
+
 
 def upload_project_dataframe(project_df, datastore):
     """Uploads project data in pandas DataFrame format to a datastore instance.
@@ -139,6 +133,7 @@ def upload_consumption_dataframe_faster(consumption_df, datastore):
 
     def has_matching_metadata(record):
         return record['label'] in metadatas_dict
+
     def trim_record(record):
         fields_to_upload = ['metadata_id', 'start', 'estimated', 'value']
         record['metadata_id'] = metadatas_dict[record['label']]
