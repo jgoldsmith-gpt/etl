@@ -29,23 +29,53 @@ def bulk_load_project_csv(f):
     return response.status_code == 200
 
 
-def bulk_load_trace_csv(f):
-
+def bulk_load_trace_csv(f, method="upsert"):
     requester = Requester(config.oeem.url, config.oeem.access_token)
     data = pd.read_csv(f, dtype=str).to_dict('records')
-    import pdb; pdb.set_trace()
 
-    # def load_dataset(self):
-    #
-    #     def maybe_float(value):
-    #         try: return float(value)
-    #         except: return np.nan
-    #
-    #     df = pd.read_csv(self.input()['file'].open('r'),
-    #                      dtype={'project_id': str},
-    #                      converters={'value': maybe_float})
-    #     df = df.dropna()
-    #     return df
+    unique_traces = list(set([
+        (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+    ]))
+
+    trace_data = [
+        {
+            "trace_id": trace[0],
+            "interpretation": trace[1],
+            "unit": trace[2],
+            "added": datetime.utcnow().isoformat(),
+            "updated": datetime.utcnow().isoformat(),
+        } for trace in unique_traces
+    ]
+
+    trace_response = requester.post(
+        constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
+
+    trace_pks_by_id = {
+        record["trace_id"]: record["id"]
+        for record in trace_response.json()
+    }
+
+    def maybe_float(value):
+        try: return float(value)
+        except: return np.nan
+
+    trace_record_data = [
+        {
+            "trace_id": trace_pks_by_id[record["trace_id"]],
+            "value": maybe_float(record["value"]),
+            "start": record["start"],
+            "estimated": record["estimated"],
+        }
+        for record in data
+    ]
+
+    if method == "upsert":
+        trace_record_response = requester.post(
+            constants.TRACE_RECORD_BULK_UPSERT_URL, trace_record_data)
+    elif method == "insert":
+        trace_record_response = requester.post(
+            constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
+    return trace_record_response.status_code == 200
 
 
 def formatted2uploaded_path(path):
@@ -93,6 +123,7 @@ class LoadProjects3(luigi.WrapperTask):
 
 class LoadTraceCSV(luigi.Task):
     path = luigi.Parameter()
+    method = luigi.Parameter(default="upsert")
 
     def requires(self):
         return FetchFile(self.path)
@@ -103,7 +134,7 @@ class LoadTraceCSV(luigi.Task):
         with target.open('w') as f: pass
 
     def run(self):
-        success = bulk_load_trace_csv(self.input().open('r'))
+        success = bulk_load_trace_csv(self.input().open('r'), self.method)
         if success:
             self.write_flag()
 
@@ -112,7 +143,9 @@ class LoadTraceCSV(luigi.Task):
 
 
 class LoadTraces3(luigi.WrapperTask):
+    method = luigi.Parameter(default="upsert")
+
     def requires(self):
         paths = config.oeem.storage.get_existing_paths(
             config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
-        return [LoadTraceCSV(path) for path in paths]
+        return [LoadTraceCSV(path, self.method) for path in paths]
