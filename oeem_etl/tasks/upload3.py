@@ -10,6 +10,7 @@ from oeem_etl import config
 from oeem_etl.paths import mirror_path
 from oeem_etl.uploader import constants
 from oeem_etl.uploader.requester import Requester
+from oeem_etl.datastore_utils import loaded_project_ids, loaded_trace_ids
 
 
 def bulk_load_project_csv(f):
@@ -77,6 +78,29 @@ def bulk_load_trace_csv(f, method="upsert"):
             constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
     return trace_record_response.status_code == 200
 
+
+def bulk_load_project_trace_mapping_csv(f):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+
+    trace_ids = {d["trace_id"]: d["id"] for d in loaded_trace_ids()}
+    project_ids = {d["project_id"]: d["id"] for d in loaded_project_ids()}
+
+    raw_matches = pd.read_csv(f, dtype=str).to_dict('records')
+
+    data = []
+    for match in raw_matches:
+        trace_id = trace_ids.get(match["trace_id"], None)
+        project_id = project_ids.get(match["project_id"], None)
+        if trace_id is not None and project_id is not None:
+            data.append({
+                "trace_id": trace_id,
+                "project_id": project_id
+            })
+
+    response = requester.post(
+        constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+
+    return response.status_code == 201
 
 def formatted2uploaded_path(path):
     return mirror_path(path,
@@ -147,5 +171,34 @@ class LoadTraces3(luigi.WrapperTask):
 
     def requires(self):
         paths = config.oeem.storage.get_existing_paths(
-            config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
+            config.oeem.OEEM_FORMAT_TRACE_OUTPUT_DIR)
         return [LoadTraceCSV(path, self.method) for path in paths]
+
+
+class LoadProjectTraceMappingCSV(luigi.Task):
+    path = luigi.Parameter()
+
+    def requires(self):
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
+        with target.open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_project_trace_mapping_csv(self.input().open('r'))
+
+        if success:
+            self.write_flag()
+
+    def output(self):
+        return config.oeem.flag_target_class(formatted2uploaded_path(self.path))
+
+
+class LoadProjectTraceMappings(luigi.WrapperTask):
+
+    def requires(self):
+        paths = config.oeem.storage.get_existing_paths(
+            config.oeem.OEEM_FORMAT_PROJECT_TRACE_MAPPING_OUTPUT_DIR)
+        return [LoadProjectTraceMappingCSV(path) for path in paths]

@@ -16,6 +16,7 @@ TRACE_BULK_UPSERT_VERBOSE_URL = 'traces/bulk_upsert_verbose/'
 TRACE_RECORD_BULK_UPSERT_URL = 'trace_records/bulk_upsert/'
 TRACE_RECORD_BULK_INSERT_URL = 'trace_records/bulk_insert/'
 TRACE_ID_LIST_URL = 'traces/ids/'
+PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL = 'project_trace_mappings/bulk_upsert_verbose/'
 
 STANDARD_PROJECT_DATA_COLUMN_NAMES = [
     "project_id",
