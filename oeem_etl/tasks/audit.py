@@ -1,6 +1,6 @@
 import luigi
 import oeem_etl.config as config
-from oeem_etl.tasks.upload2 import FetchFile
+from oeem_etl.tasks.upload import FetchFile
 from oeem_etl.csvs import read_csv_file
 
 class AuditFormattedData(luigi.Task):
