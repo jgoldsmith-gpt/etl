@@ -1,6 +1,6 @@
-from oeem_etl.uploader.requester import Requester
+from oeem_etl.requester import Requester
 from oeem_etl import config
-from oeem_etl.uploader import constants
+from oeem_etl import constants
 
 
 def loaded_project_ids():

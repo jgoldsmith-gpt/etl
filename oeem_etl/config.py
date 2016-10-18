@@ -8,6 +8,7 @@ import luigi
 import os
 from oeem_etl.storage import StorageClient
 
+
 class oeem(luigi.Config):
     url                  = luigi.Parameter()
     access_token         = luigi.Parameter()
@@ -68,10 +69,10 @@ class oeem(luigi.Config):
     def full_path(self, filename):
         return os.path.join(self.local_data_directory, filename)
 
+
 # If config files are missing, don't die right away
 # Useful for CI
 try:
     oeem = oeem()
 except:
     pass
-

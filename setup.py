@@ -17,7 +17,6 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
     ],
-    scripts=['bin/oeem-upload'],
     install_requires=[
         'eemeter==0.4',
         'luigi',

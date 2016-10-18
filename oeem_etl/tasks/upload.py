@@ -8,8 +8,8 @@ import pytz
 
 from oeem_etl import config
 from oeem_etl.paths import mirror_path
-from oeem_etl.uploader import constants
-from oeem_etl.uploader.requester import Requester
+from oeem_etl import constants
+from oeem_etl.requester import Requester
 from oeem_etl.datastore_utils import loaded_project_ids, loaded_trace_ids
 
 
