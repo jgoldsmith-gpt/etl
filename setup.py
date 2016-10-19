@@ -9,15 +9,14 @@ setup(
     version='0.1.2',
     description='Open Energy Efficiency Meter ETL utils',
     long_description=long_description,
-    url='https://github.com/impactlab/oeem-etl/',
-    author='Juan-Pablo Velez, Phil Ngo',
+    url='https://github.com/openeemeter/etl/',
+    author='Open Energy Efficiency, Inc.',
     license='MIT',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
     ],
-    scripts=['bin/oeem-upload'],
     install_requires=[
         'eemeter==0.4',
         'luigi',
@@ -27,8 +26,9 @@ setup(
         'oauth2client>=3.0.0',
         'requests>=2.10.0',
         'pyopenssl',
-        'ndg-httpsclient', 
+        'ndg-httpsclient',
         'pyasn1',
+        'pyyaml',
     ],
     keywords='open energy efficiency meter etl espi greenbutton',
 )

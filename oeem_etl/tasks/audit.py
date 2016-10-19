@@ -1,6 +1,6 @@
 import luigi
 import oeem_etl.config as config
-from oeem_etl.tasks.upload2 import FetchFile
+from oeem_etl.tasks.upload import FetchFile
 from oeem_etl.csvs import read_csv_file
 
 class AuditFormattedData(luigi.Task):
@@ -13,7 +13,7 @@ class AuditFormattedData(luigi.Task):
 
         print("Gathering file paths")
 
-        project_paths     = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
+        project_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
         consumption_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
 
         def filter_paths(paths, apply_pattern=False):

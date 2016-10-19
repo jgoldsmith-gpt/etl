@@ -15,17 +15,17 @@ def mirror_path(path, from_path, to_path):
 
     e.g.
 
-    mirror_path("/home/user/data/client/raw/consumptions/000.csv", 
+    mirror_path("/home/user/data/client/raw/consumptions/000.csv",
                 "/home/user/data/client/raw",
                 "/home/user/data/client/uploaded")
-    
+
     returns
 
-    "/home/user/data/client/uploaded/consumptions/000.csv"    
+    "/home/user/data/client/uploaded/consumptions/000.csv"
 
     """
 
     # Returns path with any directories nested under `raw` and the filename
-    nested_path = os.path.relpath(path, from_path)    
+    nested_path = os.path.relpath(path, from_path)
     output_path = os.path.join(to_path, nested_path)
     return output_path

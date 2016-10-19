@@ -1,12 +1,14 @@
 import datetime
 import csv
 
+
 def date_reader(date_format):
-    def reader(raw): 
+    def reader(raw):
         if raw.strip() == '':
             return None
         return datetime.datetime.strptime(raw, date_format)
     return reader
+
 
 def date_formatter(date_format):
     def formatter(timestamp):
@@ -14,6 +16,7 @@ def date_formatter(date_format):
             return ''
         return timestamp.strftime(date_format)
     return formatter
+
 
 def read_csv_file(csvfile, dtypes=None):
     """Read the csv file, possibly converting values in its cells
@@ -35,6 +38,7 @@ def read_csv_file(csvfile, dtypes=None):
     reader = csv.DictReader(csvfile)
     result = [apply_dtypes(row) for row in reader]
     return result
+
 
 def write_csv_file(csvfile, records, fieldnames, formatters=None):
     """

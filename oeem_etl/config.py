@@ -8,6 +8,7 @@ import luigi
 import os
 from oeem_etl.storage import StorageClient
 
+
 class oeem(luigi.Config):
     url                  = luigi.Parameter()
     access_token         = luigi.Parameter()
@@ -26,9 +27,18 @@ class oeem(luigi.Config):
 
     def __init__(self):
         super(oeem, self).__init__()
-        self.OEEM_FORMAT_PROJECT_OUTPUT_DIR      = os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'projects')
-        self.OEEM_FORMAT_PROJECTS_PATH           = os.path.join(self.OEEM_FORMAT_PROJECT_OUTPUT_DIR, 'projects.csv')
-        self.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR = os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'consumptions')
+
+        self.OEEM_FORMAT_PROJECT_OUTPUT_DIR = \
+            os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'projects')
+
+        self.OEEM_FORMAT_TRACE_OUTPUT_DIR = \
+            os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'traces')
+
+        self.OEEM_FORMAT_PROJECT_TRACE_MAPPING_OUTPUT_DIR = \
+            os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'project-trace-mappings')
+
+        self.OEEM_FORMAT_PROJECTS_PATH = \
+            os.path.join(self.OEEM_FORMAT_PROJECT_OUTPUT_DIR, 'projects.csv')
 
     @property
     def storage(self):
@@ -59,10 +69,10 @@ class oeem(luigi.Config):
     def full_path(self, filename):
         return os.path.join(self.local_data_directory, filename)
 
+
 # If config files are missing, don't die right away
 # Useful for CI
 try:
     oeem = oeem()
 except:
     pass
-

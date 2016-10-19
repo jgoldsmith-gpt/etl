@@ -1,118 +1,204 @@
+from datetime import datetime
 import luigi
-import yaml
-from .parse import ParseFile
-from ..uploader import upload_project_dataframe, upload_consumption_dataframe, upload_consumption_dataframe_faster
-import pandas as pd
 import os
 
-from .shared import mangle_path
+import numpy as np
+import pandas as pd
+import pytz
+
+from oeem_etl import config
+from oeem_etl.paths import mirror_path
+from oeem_etl import constants
+from oeem_etl.requester import Requester
+from oeem_etl.datastore_utils import loaded_project_ids, loaded_trace_ids
 
 
-class UploadProject(luigi.Task):
-    path = luigi.Parameter()
-    target_class = luigi.Parameter()
-    flag_target_class = luigi.Parameter()
-    parser = luigi.Parameter()
-    datastore = luigi.Parameter()
+def bulk_load_project_csv(f):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+    data = pd.read_csv(f, dtype=str).to_dict('records')
 
-    def requires(self):
-        return ParseFile(self.path, self.target_class, self.parser)
+    for record in data:
+        # have to patch in project owner field from config
+        record['project_owner_id'] = config.oeem.project_owner
 
-    def load_dataset(self):
-        df = pd.read_csv(self.input().open('r'),
-                dtype={"zipcode": str, "weather_station": str})
-        df.baseline_period_end = pd.to_datetime(df.baseline_period_end)
-        df.reporting_period_start = pd.to_datetime(df.reporting_period_start)
-        return df
+        # have to patch in fields that are normally autopopulated
+        record['added'] = datetime.utcnow().isoformat()
+        record['updated'] = datetime.utcnow().isoformat()
 
-    def write_flag(self):
-        uploaded_path = mangle_path(self.path, 'raw', 'uploaded')
-        target = self.target_class(os.path.join(uploaded_path, "_SUCCESS"))
-        with target.open('w') as f:
-            pass
-
-    def run(self):
-        parsed_project = self.load_dataset()
-        project_results = upload_project_dataframe(parsed_project, self.datastore)
-        self.write_flag()
-
-    def output(self):
-        uploaded_path = mangle_path(self.path, 'raw', 'uploaded') + "/"
-        return self.flag_target_class(uploaded_path)
+    # only support upsert for now
+    response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
+    return response.status_code == 200
 
 
-class UploadProjects(luigi.WrapperTask):
-    target_class = luigi.Parameter()
-    flag_target_class = luigi.Parameter()
-    datastore = luigi.Parameter()
-    raw_project_paths = luigi.Parameter()
-    project_parser = luigi.Parameter()
+def bulk_load_trace_csv(f, method="upsert"):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+    data = pd.read_csv(f, dtype=str).to_dict('records')
 
-    def requires(self):
-        return [
-            UploadProject(path, self.target_class, self.flag_target_class,
-                self.project_parser, self.datastore)
-            for path in self.raw_project_paths
-        ]
+    unique_traces = list(set([
+        (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+    ]))
 
+    trace_data = [
+        {
+            "trace_id": trace[0],
+            "interpretation": trace[1],
+            "unit": trace[2],
+            "added": datetime.utcnow().isoformat(),
+            "updated": datetime.utcnow().isoformat(),
+        } for trace in unique_traces
+    ]
 
-class UploadConsumption(luigi.Task):
-    path = luigi.Parameter()
-    target_class = luigi.Parameter()
-    flag_target_class = luigi.Parameter()
-    parser = luigi.Parameter()
-    datastore = luigi.Parameter()
-    raw_project_paths = luigi.Parameter()
-    project_parser = luigi.Parameter()
+    trace_response = requester.post(
+        constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
 
-    def requires(self):
-        return {
-            'projects': UploadProjects(self.target_class, self.flag_target_class,
-                self.datastore, self.raw_project_paths, self.project_parser),
-            'file': ParseFile(self.path, self.target_class, self.parser)
+    trace_pks_by_id = {
+        record["trace_id"]: record["id"]
+        for record in trace_response.json()
+    }
+
+    def maybe_float(value):
+        try: return float(value)
+        except: return np.nan
+
+    trace_record_data = [
+        {
+            "trace_id": trace_pks_by_id[record["trace_id"]],
+            "value": maybe_float(record["value"]),
+            "start": record["start"],
+            "estimated": record["estimated"],
         }
+        for record in data
+    ]
 
-    def load_dataset(self):
-        df = pd.read_csv(self.input()['file'].open('r'),
-                dtype={"zipcode": str})
-        df.start = pd.to_datetime(df.start)
-        return df
+    if method == "upsert":
+        trace_record_response = requester.post(
+            constants.TRACE_RECORD_BULK_UPSERT_URL, trace_record_data)
+    elif method == "insert":
+        trace_record_response = requester.post(
+            constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
+    return trace_record_response.status_code == 200
 
-    def write_flag(self):
-        uploaded_path = mangle_path(self.path, 'raw', 'uploaded')
-        target = self.target_class(os.path.join(uploaded_path, "_SUCCESS"))
-        with target.open('w') as f:
-            pass
 
-    def run(self):
-        parsed_consumption = self.load_dataset()
-        consumption_results = upload_consumption_dataframe_faster(parsed_consumption, self.datastore)
-        self.write_flag()
+def bulk_load_project_trace_mapping_csv(f):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+
+    trace_ids = {d["trace_id"]: d["id"] for d in loaded_trace_ids()}
+    project_ids = {d["project_id"]: d["id"] for d in loaded_project_ids()}
+
+    raw_matches = pd.read_csv(f, dtype=str).to_dict('records')
+
+    data = []
+    for match in raw_matches:
+        trace_id = trace_ids.get(match["trace_id"], None)
+        project_id = project_ids.get(match["project_id"], None)
+        if trace_id is not None and project_id is not None:
+            data.append({
+                "trace_id": trace_id,
+                "project_id": project_id
+            })
+
+    response = requester.post(
+        constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+
+    return response.status_code == 201
+
+def formatted2uploaded_path(path):
+    return mirror_path(path,
+                       config.oeem.full_path(config.oeem.formatted_base_path),
+                       config.oeem.full_path(config.oeem.uploaded_base_path))
+
+
+class FetchFile(luigi.ExternalTask):
+    """Fetchs file from either local disk or cloud storage"""
+    raw_file_path = luigi.Parameter()
 
     def output(self):
-        uploaded_path = mangle_path(self.path, 'raw', 'uploaded') + "/"
-        return self.flag_target_class(uploaded_path)
+        return config.oeem.target_class(self.raw_file_path)
 
-class UploadDatasets(luigi.WrapperTask):
-    raw_project_paths = luigi.Parameter()
-    raw_consumption_paths = luigi.Parameter()
-    project_parser = luigi.Parameter()
-    consumption_parser = luigi.Parameter()
-    target_class = luigi.Parameter()
-    flag_target_class = luigi.Parameter()
-    datastore = luigi.Parameter()
+
+class LoadProjectCSV(luigi.Task):
+    path = luigi.Parameter()
 
     def requires(self):
-        return [
-            UploadConsumption(path, self.target_class, self.flag_target_class,
-                self.consumption_parser, self.datastore, self.raw_project_paths,
-                self.project_parser)
-            for path in self.raw_consumption_paths
-        ]
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(
+            os.path.join(uploaded_path, "_SUCCESS"))
+        with target.open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_project_csv(self.input().open('r'))
+        if success:
+            self.write_flag()
+
+    def output(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        return config.oeem.flag_target_class(uploaded_path)
 
 
+class LoadProjects(luigi.WrapperTask):
+    def requires(self):
+        paths = config.oeem.storage.get_existing_paths(
+            config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
+        return [LoadProjectCSV(path) for path in paths]
 
 
+class LoadTraceCSV(luigi.Task):
+    path = luigi.Parameter()
+    method = luigi.Parameter(default="upsert")
+
+    def requires(self):
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
+        with target.open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_trace_csv(self.input().open('r'), self.method)
+        if success:
+            self.write_flag()
+
+    def output(self):
+        return config.oeem.flag_target_class(formatted2uploaded_path(self.path))
 
 
+class LoadTraces(luigi.WrapperTask):
+    method = luigi.Parameter(default="upsert")
 
+    def requires(self):
+        paths = config.oeem.storage.get_existing_paths(
+            config.oeem.OEEM_FORMAT_TRACE_OUTPUT_DIR)
+        return [LoadTraceCSV(path, self.method) for path in paths]
+
+
+class LoadProjectTraceMappingCSV(luigi.Task):
+    path = luigi.Parameter()
+
+    def requires(self):
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
+        with target.open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_project_trace_mapping_csv(self.input().open('r'))
+
+        if success:
+            self.write_flag()
+
+    def output(self):
+        return config.oeem.flag_target_class(formatted2uploaded_path(self.path))
+
+
+class LoadProjectTraceMappings(luigi.WrapperTask):
+
+    def requires(self):
+        paths = config.oeem.storage.get_existing_paths(
+            config.oeem.OEEM_FORMAT_PROJECT_TRACE_MAPPING_OUTPUT_DIR)
+        return [LoadProjectTraceMappingCSV(path) for path in paths]
