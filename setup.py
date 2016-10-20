@@ -20,6 +20,8 @@ setup(
     install_requires=[
         'eemeter==0.4',
         'luigi',
+        'sqlalchemy',
+        'psycopg2',
         'boto',
         'py',
         'google-api-python-client',

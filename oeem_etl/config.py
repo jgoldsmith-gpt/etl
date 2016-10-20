@@ -12,6 +12,7 @@ from oeem_etl.storage import StorageClient
 class oeem(luigi.Config):
     url                  = luigi.Parameter()
     access_token         = luigi.Parameter()
+    database_connection  = luigi.Parameter()
     project_owner        = luigi.IntParameter()
     file_storage         = luigi.Parameter()
     local_data_directory = luigi.Parameter()

@@ -2,9 +2,11 @@ from datetime import datetime
 import luigi
 import os
 
+import csv
 import numpy as np
 import pandas as pd
 import pytz
+from six import StringIO
 
 from oeem_etl import config
 from oeem_etl.paths import mirror_path
@@ -31,51 +33,114 @@ def bulk_load_project_csv(f):
 
 
 def bulk_load_trace_csv(f, method="upsert"):
-    requester = Requester(config.oeem.url, config.oeem.access_token)
-    data = pd.read_csv(f, dtype=str).to_dict('records')
 
-    unique_traces = list(set([
-        (d["trace_id"], d["interpretation"], d["unit"]) for d in data
-    ]))
+    if method in ["upsert", "insert"]:
+        requester = Requester(config.oeem.url, config.oeem.access_token)
+        data = pd.read_csv(f, dtype=str).to_dict('records')
 
-    trace_data = [
-        {
-            "trace_id": trace[0],
-            "interpretation": trace[1],
-            "unit": trace[2],
-            "added": datetime.utcnow().isoformat(),
-            "updated": datetime.utcnow().isoformat(),
-        } for trace in unique_traces
-    ]
+        unique_traces = list(set([
+            (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+        ]))
 
-    trace_response = requester.post(
-        constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
+        trace_data = [
+            {
+                "trace_id": trace[0],
+                "interpretation": trace[1],
+                "unit": trace[2],
+                "added": datetime.utcnow().isoformat(),
+                "updated": datetime.utcnow().isoformat(),
+            } for trace in unique_traces
+        ]
 
-    trace_pks_by_id = {
-        record["trace_id"]: record["id"]
-        for record in trace_response.json()
-    }
+        trace_response = requester.post(
+            constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
 
-    def maybe_float(value):
-        try: return float(value)
-        except: return np.nan
-
-    trace_record_data = [
-        {
-            "trace_id": trace_pks_by_id[record["trace_id"]],
-            "value": maybe_float(record["value"]),
-            "start": record["start"],
-            "estimated": record["estimated"],
+        trace_pks_by_id = {
+            record["trace_id"]: record["id"]
+            for record in trace_response.json()
         }
-        for record in data
-    ]
 
-    if method == "upsert":
-        trace_record_response = requester.post(
-            constants.TRACE_RECORD_BULK_UPSERT_URL, trace_record_data)
-    elif method == "insert":
-        trace_record_response = requester.post(
-            constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
+        def maybe_float(value):
+            try: return float(value)
+            except: return np.nan
+
+        trace_record_data = [
+            {
+                "trace_id": trace_pks_by_id[record["trace_id"]],
+                "value": maybe_float(record["value"]),
+                "start": record["start"],
+                "estimated": record["estimated"],
+            }
+            for record in data
+        ]
+
+        if method == "upsert":
+            trace_record_response = requester.post(
+                constants.TRACE_RECORD_BULK_UPSERT_URL, trace_record_data)
+        elif method == "insert":
+            trace_record_response = requester.post(
+                constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
+    elif method in ["direct"]:
+
+        requester = Requester(config.oeem.url, config.oeem.access_token)
+        data = pd.read_csv(f, dtype=str).to_dict('records')
+
+        unique_traces = list(set([
+            (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+        ]))
+
+        trace_data = [
+            {
+                "trace_id": trace[0],
+                "interpretation": trace[1],
+                "unit": trace[2],
+                "added": datetime.utcnow().isoformat(),
+                "updated": datetime.utcnow().isoformat(),
+            } for trace in unique_traces
+        ]
+
+        trace_response = requester.post(
+            constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
+
+        trace_pks_by_id = {
+            record["trace_id"]: record["id"]
+            for record in trace_response.json()
+        }
+
+        def maybe_float(value):
+            try: return float(value)
+            except: return np.nan
+
+        trace_record_data = [
+            {
+                "trace_id": trace_pks_by_id[record["trace_id"]],
+                "value": maybe_float(record["value"]),
+                "start": record["start"],
+                "estimated": record["estimated"],
+            }
+            for record in data
+        ]
+
+        from sqlalchemy import create_engine
+        engine = create_engine(config.oeem.database_connection)
+        conn = engine.raw_connection()
+
+        cursor = conn.cursor()
+
+        # Write the request data to an in-memory CSV file for a subsequent
+        # Postgres COPY
+        infile = StringIO()
+        fieldnames = trace_record_data[0].keys()
+        writer = csv.DictWriter(infile, fieldnames=fieldnames)
+        for record in trace_record_data:
+            writer.writerow(record)
+        infile.seek(0)
+
+        # Load data directly into table from CSV
+        cursor.copy_from(file=infile, table='datastore_tracerecord', sep=',',
+                         columns=fieldnames, null="")
+
+        return True
     return trace_record_response.status_code == 200
 
 
