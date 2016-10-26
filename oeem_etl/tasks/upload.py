@@ -11,6 +11,7 @@ from oeem_etl.paths import mirror_path
 from oeem_etl import constants
 from oeem_etl.requester import Requester
 from oeem_etl.datastore_utils import loaded_project_ids, loaded_trace_ids
+from oeem_etl.csvs import read_csv_file
 
 
 def bulk_load_project_csv(f):
@@ -29,6 +30,28 @@ def bulk_load_project_csv(f):
     response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
     return response.status_code == 200
 
+def bulk_load_project_metadata_csv(f):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+    input_data = read_csv_file(f)
+
+    # Reshape
+    data = []
+    for row in input_data:
+        for key, value in row.items():
+            if value is None:
+                continue
+            if value.strip() == '':
+                continue
+            if key == 'project_id':
+                continue
+            data.append({
+                'project_id': row['project_id'],
+                'key': key.decode('utf-8').encode('utf-8'),
+                'value': value.decode('utf-8').encode('utf-8')
+            })
+
+    response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, data)
+    return response.status_code == 200
 
 def bulk_load_trace_csv(f, method="upsert"):
     requester = Requester(config.oeem.url, config.oeem.access_token)
@@ -202,3 +225,28 @@ class LoadProjectTraceMappings(luigi.WrapperTask):
         paths = config.oeem.storage.get_existing_paths(
             config.oeem.OEEM_FORMAT_PROJECT_TRACE_MAPPING_OUTPUT_DIR)
         return [LoadProjectTraceMappingCSV(path) for path in paths]
+
+
+class LoadProjectMetadata(luigi.Task):
+
+    @property
+    def path(self):
+        return config.oeem.full_path(config.oeem.OEEM_FORMAT_PROJECT_METADATA_PATH)
+
+    def requires(self): 
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        with self.output().open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_project_metadata_csv(self.input().open('r'))
+        if success:
+            self.write_flag()
+
+    def output(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
+        return target
+
+
