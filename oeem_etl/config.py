@@ -40,6 +40,9 @@ class oeem(luigi.Config):
         self.OEEM_FORMAT_PROJECTS_PATH = \
             os.path.join(self.OEEM_FORMAT_PROJECT_OUTPUT_DIR, 'projects.csv')
 
+        self.OEEM_FORMAT_PROJECT_METADATA_PATH = \
+            os.path.join(self.OEEM_FORMAT_OUTPUT_BASE_PATH, 'project-metadata.csv')
+
     @property
     def storage(self):
         if self._storage is None:
