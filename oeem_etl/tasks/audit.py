@@ -1,4 +1,5 @@
 import luigi
+from tqdm import tqdm
 import oeem_etl.config as config
 from oeem_etl.tasks.upload import FetchFile
 from oeem_etl.csvs import read_csv_file
@@ -14,7 +15,7 @@ class AuditFormattedData(luigi.Task):
         print("Gathering file paths")
 
         project_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
-        consumption_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_CONSUMPTIONS_OUTPUT_DIR)
+        trace_paths = config.oeem.storage.get_existing_paths(config.oeem.OEEM_FORMAT_TRACE_OUTPUT_DIR)
 
         def filter_paths(paths, apply_pattern=False):
             paths = [path for path in paths if not path.endswith('.DS_Store')]
@@ -23,35 +24,39 @@ class AuditFormattedData(luigi.Task):
             return paths
 
         project_paths = filter_paths(project_paths)
-        consumption_paths = filter_paths(consumption_paths, apply_pattern=True)
+        trace_paths = filter_paths(trace_paths, apply_pattern=True)
 
         return {
             'projects': [FetchFile(path) for path in project_paths],
-            'consumptions': [FetchFile(path) for path in consumption_paths]
+            'traces': [FetchFile(path) for path in trace_paths],
+            'mappings': FetchFile(config.oeem.full_path(config.oeem.OEEM_FORMAT_PROJECT_TRACE_MAPPING_PATH)),
         }
 
     def run(self):
 
-        print("Gathering min/max dates of consumption traces")
+        print("Gathering min/max dates of traces")
 
-        # Find min/max dates in all consumption traces
+        mappings = read_csv_file(self.input()['mappings'].open('r'))
+        # Assume one to one mapping
+        project2trace = {row['project_id']: row['trace_id'] for row in mappings}
+
+        # Find min/max dates in all traces
         min_dates = {}
         max_dates = {}
 
         file_count = 0
-        for consumptions_file in self.input()['consumptions']:
+        for traces_file in tqdm(self.input()['traces']):
             file_count += 1
-            print(file_count)
-            consumptions = read_csv_file(consumptions_file.open('r'))
+            traces = read_csv_file(traces_file.open('r'))
 
-            for consumption in consumptions:
-                project_id = consumption['project_id']
-                if project_id not in min_dates or min_dates[project_id] > consumption['start']:
-                    min_dates[project_id] = consumption['start']
-                if project_id not in max_dates or max_dates[project_id] < consumption['start']:
-                    max_dates[project_id] = consumption['start']
+            for trace in traces:
+                trace_id = trace['trace_id']
+                if trace_id not in min_dates or min_dates[trace_id] > trace['start']:
+                    min_dates[trace_id] = trace['start']
+                if trace_id not in max_dates or max_dates[trace_id] < trace['start']:
+                    max_dates[trace_id] = trace['start']
 
-        # Compare min/max consumption trace dates to project dates
+        # Compare min/max trace dates to project dates
         print("Testing inclusion status")
 
         inclusion_count = 0
@@ -59,14 +64,14 @@ class AuditFormattedData(luigi.Task):
 
         for projects_file in self.input()['projects']:
             projects = read_csv_file(projects_file.open('r'))
-
             for project in projects:
                 project_id = project['project_id']
-                if project_id not in min_dates:
+                trace_id = project2trace.get(project_id, None)
+                if trace_id is None or trace_id not in min_dates:
                     failed_inclusion_count += 1
-                elif min_dates[project_id] > project['baseline_period_end']:
+                elif min_dates[trace_id] > project['baseline_period_end']:
                     failed_inclusion_count += 1
-                elif max_dates[project_id] < project['reporting_period_start']:
+                elif max_dates[trace_id] < project['reporting_period_start']:
                     failed_inclusion_count += 1
                 else:
                     inclusion_count += 1

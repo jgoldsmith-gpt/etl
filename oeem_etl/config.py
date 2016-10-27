@@ -37,6 +37,9 @@ class oeem(luigi.Config):
         self.OEEM_FORMAT_PROJECT_TRACE_MAPPING_OUTPUT_DIR = \
             os.path.join(str(self.OEEM_FORMAT_OUTPUT_BASE_PATH), 'project-trace-mappings')
 
+        self.OEEM_FORMAT_PROJECT_TRACE_MAPPING_PATH = \
+            os.path.join(self.OEEM_FORMAT_PROJECT_TRACE_MAPPING_OUTPUT_DIR, 'mapping.csv')
+
         self.OEEM_FORMAT_PROJECTS_PATH = \
             os.path.join(self.OEEM_FORMAT_PROJECT_OUTPUT_DIR, 'projects.csv')
 
