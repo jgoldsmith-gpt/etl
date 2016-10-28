@@ -36,7 +36,7 @@ class AuditFormattedData(luigi.Task):
 
     def output(self):
         target = os.path.join(config.oeem.local_data_directory, 'audit_formatted_data.json')
-        return luigi.LocalTarget(target)
+        return config.oeem.target_class(target)
 
     def run(self):
 
