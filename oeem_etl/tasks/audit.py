@@ -1,3 +1,5 @@
+import os
+import json
 import luigi
 from tqdm import tqdm
 import oeem_etl.config as config
@@ -32,6 +34,10 @@ class AuditFormattedData(luigi.Task):
             'mappings': FetchFile(config.oeem.full_path(config.oeem.OEEM_FORMAT_PROJECT_TRACE_MAPPING_PATH)),
         }
 
+    def output(self):
+        target = os.path.join(config.oeem.local_data_directory, 'audit_formatted_data.json')
+        return config.oeem.target_class(target)
+
     def run(self):
 
         print("Counting projects")
@@ -47,6 +53,15 @@ class AuditFormattedData(luigi.Task):
         # Find min/max dates in all traces
         min_dates = {}
         max_dates = {}
+
+        audit_results = {
+            'success': [],
+            'no_trace': [],
+            'min_date_gt_baseline_period_end': [],
+            'max_date_lt_reporting_period_start': [],
+            'total_success': 0,
+            'total_failed': 0
+        }
 
         file_count = 0
         for traces_file in tqdm(self.input()['traces']):
@@ -73,12 +88,22 @@ class AuditFormattedData(luigi.Task):
                 trace_id = project2trace.get(project_id, None)
                 if trace_id is None or trace_id not in min_dates:
                     failed_inclusion_count += 1
+                    audit_results['no_trace'].append(project_id)
                 elif min_dates[trace_id] > project['baseline_period_end']:
                     failed_inclusion_count += 1
+                    audit_results['min_date_gt_baseline_period_end'].append(project_id)
                 elif max_dates[trace_id] < project['reporting_period_start']:
                     failed_inclusion_count += 1
+                    audit_results['max_date_lt_reporting_period_start'].append(project_id)
                 else:
                     inclusion_count += 1
+                    audit_results['success'].append(project_id)
 
         print("Failed inclusion test %s" % failed_inclusion_count)
         print("Succeeded inclusion test %s" % inclusion_count)
+
+        audit_results['total_success'] = inclusion_count
+        audit_results['total_failed'] = failed_inclusion_count
+
+        with self.output().open('w') as f:
+            f.write(json.dumps(audit_results))
