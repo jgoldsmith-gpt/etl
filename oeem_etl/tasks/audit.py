@@ -1,5 +1,6 @@
 import os
 import json
+import csv
 import luigi
 from tqdm import tqdm
 import oeem_etl.config as config
@@ -41,12 +42,28 @@ class AuditFormattedData(luigi.Task):
     def run(self):
 
         print("Counting projects")
+        project_ids = set()
+        for projects_file in self.input()['projects']:
+            projects = read_csv_file(projects_file.open('r'))
+            for project in projects:
+                project_ids.add(project['project_id'])
+        print("%s projects counted" % len(project_ids))
+
+        print("Counting project-trace mappings")
+        mappings = read_csv_file(self.input()['mappings'].open('r'))
+        print("%s project-trace mappings counted" % len(mappings))
 
         print("Counting traces")
+        trace_ids = set()
+        for traces_file in tqdm(self.input()['traces']):
+            reader = csv.DictReader(traces_file.open('r'))
+            for row in reader:
+                trace_ids.add(row['trace_id'])
+        print("%s traces counted" % len(trace_ids))
 
+        
         print("Gathering min/max dates of traces")
-
-        mappings = read_csv_file(self.input()['mappings'].open('r'))
+        
         # Assume one to one mapping
         project2trace = {row['project_id']: row['trace_id'] for row in mappings}
 
