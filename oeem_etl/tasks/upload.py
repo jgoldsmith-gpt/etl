@@ -5,6 +5,7 @@ import os
 import numpy as np
 import pandas as pd
 import pytz
+from tqdm import tqdm
 
 from oeem_etl import config
 from oeem_etl.paths import mirror_path
@@ -13,6 +14,10 @@ from oeem_etl.requester import Requester
 from oeem_etl.datastore_utils import loaded_project_ids, loaded_trace_ids
 from oeem_etl.csvs import read_csv_file
 
+def batches(items, batch_size):
+    """Helper for splitting a list of items into smaller batches"""
+    for i in xrange(0, len(items), batch_size):
+        yield items[i:i + batch_size]
 
 def bulk_load_project_csv(f):
     requester = Requester(config.oeem.url, config.oeem.access_token)
@@ -120,8 +125,9 @@ def bulk_load_project_trace_mapping_csv(f):
                 "project_id": project_id
             })
 
-    response = requester.post(
-        constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+    for batch in tqdm(batches(data, 800)):
+        response = requester.post(
+            constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, batch)
 
     return response.status_code == 201
 

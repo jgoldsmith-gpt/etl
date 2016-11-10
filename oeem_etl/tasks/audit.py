@@ -34,6 +34,10 @@ class AuditFormattedData(luigi.Task):
 
     def run(self):
 
+        print("Counting projects")
+
+        print("Counting traces")
+
         print("Gathering min/max dates of traces")
 
         mappings = read_csv_file(self.input()['mappings'].open('r'))
