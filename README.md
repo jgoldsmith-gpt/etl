@@ -63,6 +63,7 @@ The datastore expects CSV files with the following fields for loading:
 **ProjectTraceMapping**
 
 | Field | Value |
+| --- | --- |
 | project_id | |
 | trace_id | |
 
@@ -71,6 +72,7 @@ The datastore expects CSV files with the following fields for loading:
 Emit key, value pairs for a project into a csv with column headers as key name.
 
 | Field | Value |
+| --- | --- |
 | project_id | |
 | [Attribute Name] | [Attribute Value]
 
