@@ -238,6 +238,7 @@ class LoadTraceCSV(luigi.Task):
         if self.method == "direct":
             global conn
             if conn is None:
+                print("Connecting to db")
                 engine = create_engine(config.oeem.database_url)
                 conn = engine.raw_connection()
             success = bulk_load_trace_csv(self.input().open('r'), self.method, conn=conn)
