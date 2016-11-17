@@ -1,11 +1,17 @@
 from datetime import datetime
 import luigi
 import os
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 import numpy as np
 import pandas as pd
 import pytz
+import csv
 from tqdm import tqdm
+from sqlalchemy import create_engine
 
 from oeem_etl import config
 from oeem_etl.paths import mirror_path
@@ -18,6 +24,39 @@ def batches(items, batch_size):
     """Helper for splitting a list of items into smaller batches"""
     for i in xrange(0, len(items), batch_size):
         yield items[i:i + batch_size]
+
+
+def direct_load_records(conn, records, db_table):
+    """Using an existing database connection, directly load list of data into table"""
+
+    cursor = conn.cursor()
+
+    # Write the request data to an in-memory CSV file for a subsequent COPY
+    # TODO: support loading directly from a file (for now, we munge file contents
+    # a bit in core ETL, which makes it more convenient to load from list of
+    # records.)
+    infile = StringIO()
+    fieldnames = records[0].keys()
+    writer = csv.DictWriter(
+        infile, fieldnames=fieldnames, delimiter='\t', quoting=csv.QUOTE_NONE, escapechar='\\')
+    def encode(value):
+        # tests for Python2
+        if 'unicode' in __builtins__:
+            try:
+                # if it's a string, explicity encode
+                return value.encode('utf-8')
+            except:
+                # not a string
+                return value
+        else:
+            # no need to encode in Python3
+            return value
+    for record in records:
+        writer.writerow({k: encode(v) for k, v in record.items()})
+    infile.seek(0)
+
+    cursor.copy_from(file=infile, table=db_table, sep='\t', columns=fieldnames, null="")
+    conn.commit()
 
 def bulk_load_project_csv(f):
     requester = Requester(config.oeem.url, config.oeem.access_token)
@@ -58,7 +97,7 @@ def bulk_load_project_metadata_csv(f):
     response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, data)
     return response.status_code == 200
 
-def bulk_load_trace_csv(f, method="upsert"):
+def bulk_load_trace_csv(f, method="upsert", conn=None):
     requester = Requester(config.oeem.url, config.oeem.access_token)
     data = pd.read_csv(f, dtype=str).to_dict('records')
 
@@ -101,10 +140,16 @@ def bulk_load_trace_csv(f, method="upsert"):
     if method == "upsert":
         trace_record_response = requester.post(
             constants.TRACE_RECORD_BULK_UPSERT_URL, trace_record_data)
+        response = trace_record_response.status_code == 200
     elif method == "insert":
         trace_record_response = requester.post(
             constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
-    return trace_record_response.status_code == 200
+        response = trace_record_response.status_code == 200
+    elif method == "direct":
+        direct_load_records(conn, trace_record_data, 'datastore_tracerecord')
+        response = True
+
+    return response
 
 
 def bulk_load_project_trace_mapping_csv(f):
@@ -171,8 +216,10 @@ class LoadProjects(luigi.WrapperTask):
     def requires(self):
         paths = config.oeem.storage.get_existing_paths(
             config.oeem.OEEM_FORMAT_PROJECT_OUTPUT_DIR)
-        return [LoadProjectCSV(path) for path in paths]
+        return [LoadProjectCSV(path) for path in paths if not path.endswith(".DS_Store")]
 
+
+conn = None
 
 class LoadTraceCSV(luigi.Task):
     path = luigi.Parameter()
@@ -187,7 +234,16 @@ class LoadTraceCSV(luigi.Task):
         with target.open('w') as f: pass
 
     def run(self):
-        success = bulk_load_trace_csv(self.input().open('r'), self.method)
+
+        if self.method == "direct":
+            global conn
+            if conn is None:
+                engine = create_engine(config.oeem.database_url)
+                conn = engine.raw_connection()
+            success = bulk_load_trace_csv(self.input().open('r'), self.method, conn=conn)
+        else:
+            success = bulk_load_trace_csv(self.input().open('r'), self.method)
+
         if success:
             self.write_flag()
 
@@ -254,5 +310,7 @@ class LoadProjectMetadata(luigi.Task):
         uploaded_path = formatted2uploaded_path(self.path)
         target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
         return target
+
+
 
 

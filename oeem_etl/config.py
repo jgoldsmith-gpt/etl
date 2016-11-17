@@ -4,8 +4,9 @@ Load configuration using the "Parameters from config Ingestion" pattern.
 http://luigi.readthedocs.io/en/stable/configuration.html#parameters-from-config-ingestion
 """
 
-import luigi
+import traceback
 import os
+import luigi
 from oeem_etl.storage import StorageClient
 
 
@@ -17,6 +18,7 @@ class oeem(luigi.Config):
     local_data_directory = luigi.Parameter()
     uploaded_base_path   = luigi.Parameter()
     formatted_base_path  = luigi.Parameter()
+    database_url         = luigi.Parameter()
 
     OEEM_FORMAT_OUTPUT_BASE_PATH = luigi.Parameter(default='oeem-format')
 
@@ -81,4 +83,4 @@ class oeem(luigi.Config):
 try:
     oeem = oeem()
 except:
-    pass
+    traceback.print_exc()
