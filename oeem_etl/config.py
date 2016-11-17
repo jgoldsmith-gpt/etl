@@ -7,8 +7,8 @@ http://luigi.readthedocs.io/en/stable/configuration.html#parameters-from-config-
 import traceback
 import os
 import luigi
+from sqlalchemy import create_engine
 from oeem_etl.storage import StorageClient
-
 
 class oeem(luigi.Config):
     url                  = luigi.Parameter()
@@ -26,6 +26,7 @@ class oeem(luigi.Config):
     _flag_target_class = None
     _storage = None
     _datastore = None
+    _database_conn = None
 
     def __init__(self):
         super(oeem, self).__init__()
@@ -73,6 +74,14 @@ class oeem(luigi.Config):
         if self._datastore is None:
             self._datastore = self.__dict__
         return self._datastore
+
+    @property
+    def database_conn(self):
+        if self._database_conn is None:
+            engine = create_engine(self.database_url)
+            self._database_conn = engine.raw_connection()
+        return self._database_conn
+
 
     def full_path(self, filename):
         return os.path.join(self.local_data_directory, filename)

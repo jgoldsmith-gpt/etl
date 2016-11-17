@@ -11,7 +11,6 @@ import pandas as pd
 import pytz
 import csv
 from tqdm import tqdm
-from sqlalchemy import create_engine
 
 from oeem_etl import config
 from oeem_etl.paths import mirror_path
@@ -26,9 +25,10 @@ def batches(items, batch_size):
         yield items[i:i + batch_size]
 
 
-def direct_load_records(conn, records, db_table):
+def direct_load_records(records, db_table):
     """Using an existing database connection, directly load list of data into table"""
 
+    conn = config.oeem.database_conn
     cursor = conn.cursor()
 
     # Write the request data to an in-memory CSV file for a subsequent COPY
@@ -97,7 +97,7 @@ def bulk_load_project_metadata_csv(f):
     response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, data)
     return response.status_code == 200
 
-def bulk_load_trace_csv(f, method="upsert", conn=None):
+def bulk_load_trace_csv(f, method="upsert"):
     requester = Requester(config.oeem.url, config.oeem.access_token)
     data = pd.read_csv(f, dtype=str).to_dict('records')
 
@@ -146,7 +146,7 @@ def bulk_load_trace_csv(f, method="upsert", conn=None):
             constants.TRACE_RECORD_BULK_INSERT_URL, trace_record_data)
         response = trace_record_response.status_code == 200
     elif method == "direct":
-        direct_load_records(conn, trace_record_data, 'datastore_tracerecord')
+        direct_load_records(trace_record_data, 'datastore_tracerecord')
         response = True
 
     return response
@@ -234,17 +234,7 @@ class LoadTraceCSV(luigi.Task):
         with target.open('w') as f: pass
 
     def run(self):
-
-        if self.method == "direct":
-            global conn
-            if conn is None:
-                print("Connecting to db")
-                engine = create_engine(config.oeem.database_url)
-                conn = engine.raw_connection()
-            success = bulk_load_trace_csv(self.input().open('r'), self.method, conn=conn)
-        else:
-            success = bulk_load_trace_csv(self.input().open('r'), self.method)
-
+        success = bulk_load_trace_csv(self.input().open('r'), self.method)
         if success:
             self.write_flag()
 
