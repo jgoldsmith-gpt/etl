@@ -36,6 +36,44 @@ An example of a command to run a Luigi task from a client-specific module:
 
 The client module that implements the task should be installed where Luigi can find it (e.g. `pip install -e .`).
 
+## Data Format
+
+The datastore expects CSV files with the following fields for loading:
+
+**Projects**
+
+| Field | Value |
+| --- | --- |
+| project_id | Client's id for this project |
+| zipcode | |
+| baseline_period_end | |
+| reporting_period_start | |
+
+**Traces**
+
+| Field | Value |
+| --- | --- |
+| trace_id | Unique identifier for the trace |
+| start | |
+| interpretation | [EEMeter Interpretations](http://eemeter.readthedocs.io/en/latest/eemeter_api.html#module-eemeter.structures) |
+| value | |
+| estimated | |
+| unit | `KWH` or `THM` |
+
+**ProjectTraceMapping**
+
+| Field | Value |
+| project_id | |
+| trace_id | |
+
+**ProjectMetadata**
+
+Emit key, value pairs for a project into a csv with column headers as key name.
+
+| Field | Value |
+| project_id | |
+| [Attribute Name] | [Attribute Value]
+
 ***
 
 **The following is historical documentation which is somewhat misleading and inaccurate as the module has evolved (it will be revised at a later date).**
