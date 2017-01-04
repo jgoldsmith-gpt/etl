@@ -60,7 +60,12 @@ def bulk_load_project_metadata_csv(f):
 
 def bulk_load_trace_csv(f, method="upsert"):
     requester = Requester(config.oeem.url, config.oeem.access_token)
-    data = pd.read_csv(f, dtype=str).to_dict('records')
+
+    try:
+        data = pd.read_csv(f, dtype=str).to_dict('records')
+    except ValueError:
+        # Assume this is an empty file error, which is ok
+        return True
 
     unique_traces = list(set([
         (d["trace_id"], d["interpretation"], d["unit"]) for d in data
