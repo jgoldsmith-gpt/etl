@@ -81,4 +81,6 @@ class oeem(luigi.Config):
 try:
     oeem = oeem()
 except:
-    pass
+    import traceback
+    print("Skipped loading config with following error:")
+    traceback.print_exc()
