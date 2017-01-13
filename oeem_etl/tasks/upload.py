@@ -167,6 +167,20 @@ def bulk_load_project_trace_mapping_csv(f):
 
     return response.status_code == 201
 
+def bulk_load_trace_blacklist(f):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+
+    input_data = read_csv_file(f)
+
+    successes = []
+    for batch in tqdm(batches(input_data, 500)):
+        response = requester.post(
+            constants.TRACE_BLACKLIST_UPSERT_VERBOSE_URL, batch)
+
+        successes.append(response.status_code == 201)
+
+    return all(successes)
+
 def formatted2uploaded_path(path):
     return mirror_path(path,
                        config.oeem.full_path(config.oeem.formatted_base_path),
@@ -290,3 +304,27 @@ class LoadProjectMetadata(luigi.Task):
         uploaded_path = formatted2uploaded_path(self.path)
         target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
         return target
+
+class LoadTraceBlacklist(luigi.Task):
+
+    @property
+    def path(self):
+        return config.oeem.full_path(config.oeem.OEEM_FORMAT_TRACE_BLACKLIST_PATH)
+
+    def requires(self):
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
+        with target.open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_trace_blacklist(self.input().open('r'))
+
+        if success:
+            self.write_flag()
+
+    def output(self):
+        return config.oeem.flag_target_class(formatted2uploaded_path(self.path))
+
