@@ -18,7 +18,7 @@ setup(
         'Programming Language :: Python :: 3',
     ],
     install_requires=[
-        'eemeter==0.4',
+        'eemeter>=0.4',
         'luigi',
         'boto',
         'py',
