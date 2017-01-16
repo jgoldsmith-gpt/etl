@@ -1,5 +1,4 @@
 # Shared ETL utility functions
-This is a shared library of routines for writing ETL pipelines for OEEM Datastore instances. Features include:
 
 - fetch energy data from ESPI APIs
 - GCS support
@@ -26,8 +25,8 @@ Running a Luigi task requires a `.cfg` configuration file with the following sec
 
 ## Run
 
-This library isn't run directly. Rather, it's components are used to build datastore-specifiec ETL pipelines, which are 
-found in separate repos. 
+This library isn't run directly. Rather, it's components are used to build datastore-specifiec ETL pipelines, which are
+found in separate repos.
 
 An example of a command to run a Luigi task from a client-specific module:
 
