@@ -29,6 +29,7 @@ setup(
         'ndg-httpsclient',
         'pyasn1',
         'pyyaml',
+        'airflow',
     ],
     keywords='open energy efficiency meter etl espi greenbutton',
 )
