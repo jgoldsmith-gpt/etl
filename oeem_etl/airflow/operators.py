@@ -33,12 +33,64 @@ class GoogleCloudStorageUploadOperator(BaseOperator):
         hook.upload(bucket=self.bucket, object=self.target, filename=self.filename)
 
 
+class CreateProjTraceMapFromJsonOperator(BaseOperator):
+    """
+    Creates OEE project-trace map CSV file from JSON map where keys
+    are project_ids and values are trace_ids. Designed to work directly 
+    with the style of dicts created by task_output_maps in
+    TranslateCSVOperator:
+    {
+        "ProjectId": {
+            "proj_id_1": ["trace_id_1", "trace_id_2"],
+            "proj_id_2": ["trace_id_3", "trace_id_4"],
+            ...
+        }
+    }
+    """
+    ui_color = '#f4f142'
+
+    @apply_defaults
+    def __init__(self,
+                 in_file,
+                 out_file,
+                 map_name,
+                 row_functions=[],
+                 *args,
+                 **kwargs):
+        """
+        """
+        super(CreateProjTraceMapFromJsonOperator, self).__init__(*args, **kwargs)
+        self.in_file = in_file
+        self.out_file = out_file
+        self.map_name = map_name
+        self.row_functions = row_functions
+
+    def execute(self, context):
+        with open(self.in_file, 'r') as f_in:
+            json_map = json.load(f_in)
+
+        with open(self.out_file, 'w') as f_out:
+            writer = csv.DictWriter(f_out, ['project_id', 'trace_id'])
+            writer.writeheader()
+
+            pt_maps = json_map[self.map_name]
+            for key in pt_maps:
+                rows = []
+                for val in pt_maps[key]:
+                    row = {'project_id': key, 'trace_id': val}
+                    for func in self.row_functions:
+                        row = func(row)
+                    rows.append(row)
+                writer.writerows(rows)
+
+
+
 class TranslateCSVOperator(BaseOperator):
     """
     Performs generic CSV transforms
     """
     ui_color = '#f4bc42'
-    
+
     @apply_defaults
     def __init__(self,
                  in_file,
@@ -205,4 +257,3 @@ class TranslateCSVOperator(BaseOperator):
         if output_map_file is not None:
             with open(output_map_file, 'w') as f:
                 f.write(json.dumps(task_output))
-
