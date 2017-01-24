@@ -1,4 +1,5 @@
 from airflow.models import BaseOperator
+from airflow.operators.sensors import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
 import os
@@ -31,6 +32,37 @@ class GoogleCloudStorageUploadOperator(BaseOperator):
     def execute(self, context):
         hook = GoogleCloudStorageHook(google_cloud_storage_conn_id=self.gcs_conn_id)
         hook.upload(bucket=self.bucket, object=self.target, filename=self.filename)
+
+
+class GoogleCloudStorageFileSensor(BaseSensorOperator):
+    ui_color = '#18f4e9'
+
+    @apply_defaults
+    def __init__(self, 
+                 bucket, 
+                 object, 
+                 gcs_conn_id='google_cloud_storage_default',
+                 *args, 
+                 **kwargs):
+        super(GoogleCloudStorageFileSensor, self).__init__(*args, **kwargs)
+        self.bucket = bucket
+        self.object = object
+        self.gcs_conn_id = gcs_conn_id
+
+    def poke(self, context):
+        hook = GoogleCloudStorageHook(google_cloud_storage_conn_id=self.gcs_conn_id)
+        logging.info('Poking: ' + self.object + ' in ' + self.bucket)
+        service = hook.get_conn()
+        try:
+            service \
+                .objects() \
+                .get(bucket=self.bucket, object=self.object) \
+                .execute()
+            return True
+        except errors.HttpError as ex:
+            if ex.resp['status'] == '404':
+                return False
+            raise
 
 
 class CreateProjTraceMapFromJsonOperator(BaseOperator):
