@@ -2,12 +2,45 @@ from airflow.models import BaseOperator
 from airflow.operators.sensors import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
+from oeem_etl.requester import Requester
+from oeem_etl import constants
 import os
 import json
 import csv
 import logging
 import dateutil
+from datetime import datetime
 import glob
+import pandas as pd
+
+
+class LoadProjectCSVOperator(BaseOperator):
+    ui_color = '#d1f7bb'
+
+    @apply_defaults
+    def __init__(self,
+                 filename,
+                 datastore_url,
+                 access_token,
+                 project_owner=1,
+                 *args, **kwargs):
+        super(LoadProjectCSVOperator, self).__init__(*args, **kwargs)
+        self.filename = filename
+        self.datastore_url = datastore_url
+        self.access_token = access_token
+        self.project_owner = 1
+
+    def execute(self, context):
+        requester = Requester(self.datastore_url, self.access_token)
+        data = pd.read_csv(self.filename, dtype=str).to_dict('records')
+
+        for record in data:
+            record['project_owner_id'] = self.project_owner
+            record['added'] = datetime.utcnow().isoformat()
+            record['updated'] = datetime.utcnow().isoformat()
+
+        response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
+        return response.status_code == 200
 
 
 class AuditFormattedDataOperator(BaseOperator):
