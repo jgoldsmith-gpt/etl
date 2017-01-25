@@ -28,7 +28,7 @@ class LoadProjectCSVOperator(BaseOperator):
         self.filename = filename
         self.datastore_url = datastore_url
         self.access_token = access_token
-        self.project_owner = 1
+        self.project_owner = project_owner
 
     def execute(self, context):
         requester = Requester(self.datastore_url, self.access_token)
@@ -40,6 +40,45 @@ class LoadProjectCSVOperator(BaseOperator):
             record['updated'] = datetime.utcnow().isoformat()
 
         response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
+        return response.status_code == 200
+
+
+class LoadProjectMetadataCSVOperator(BaseOperator):
+    ui_color = '#d1f7bb'
+
+    @apply_defaults
+    def __init__(self,
+                 filename,
+                 datastore_url,
+                 access_token,
+                 *args, **kwargs):
+        super(LoadProjectMetadataCSVOperator, self).__init__(*args, **kwargs)
+        self.filename = filename
+        self.datastore_url = datastore_url
+        self.access_token = access_token
+
+    def execute(self, context):
+        upload_data = []
+        requester = Requester(self.datastore_url, self.access_token)
+        with open(self.filename, 'r') as f_in:
+            reader = csv.DictReader(f_in, skipinitialspace=True)
+            for record in reader:
+                project_id = record['project_id']
+                for key in record.keys():
+                    value = record[key]
+                    if value is None:
+                        continue
+                    if value.strip() == '':
+                        continue
+                    if key == 'project_id':
+                        continue
+                    upload_data.append({
+                        'project_id': project_id,
+                        'key': key.decode('utf-8').encode('utf-8'),
+                        'value': value.decode('utf-8').encode('utf-8'),
+                    })
+
+        response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
         return response.status_code == 200
 
 
