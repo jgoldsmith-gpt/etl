@@ -39,6 +39,7 @@ class LoadProjectCSVOperator(BaseOperator):
             record['added'] = datetime.utcnow().isoformat()
             record['updated'] = datetime.utcnow().isoformat()
 
+        logging.info("Loading {} project rows".format(len(data)))
         response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
         return response.status_code == 200
 
@@ -51,14 +52,17 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                  filename,
                  datastore_url,
                  access_token,
+                 bulk_size=1000,
                  *args, **kwargs):
         super(LoadProjectMetadataCSVOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.datastore_url = datastore_url
         self.access_token = access_token
+        self.bulk_size = bulk_size
 
     def execute(self, context):
         upload_data = []
+        rows_loaded = 0
         requester = Requester(self.datastore_url, self.access_token)
         with open(self.filename, 'r') as f_in:
             reader = csv.DictReader(f_in, skipinitialspace=True)
@@ -78,8 +82,16 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                         'value': value.decode('utf-8').encode('utf-8'),
                     })
 
+                    if len(upload_data) > self.bulk_size:
+                        response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
+                        rows_loaded += len(upload_data)
+                        logging.info("Loading {} rows, {} total so far".format(len(upload_data), rows_loaded))
+                        upload_data = []
+
+        # upload the leftovers
         response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
-        return response.status_code == 200
+        rows_loaded += len(upload_data)
+        logging.info("{} metadata records loaded.".format(rows_loaded))
 
 
 class AuditFormattedDataOperator(BaseOperator):
