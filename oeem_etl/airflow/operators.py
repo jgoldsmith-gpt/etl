@@ -200,6 +200,53 @@ class LoadTraceCSVOperator(BaseOperator):
         logging.info("Completed loading {} trace records".format(rows_loaded))
 
 
+class LoadProjectTraceMapCSVOperator(BaseOperator):
+    ui_color = '#d1f7bb'
+
+    @apply_defaults
+    def __init__(self,
+                 filename,
+                 datastore_url,
+                 access_token,
+                 bulk_size=1000,
+                 *args, **kwargs):
+        super(LoadProjectTraceMapCSVOperator, self).__init__(*args, **kwargs)
+        self.filename = filename
+        self.datastore_url = datastore_url
+        self.access_token = access_token
+        self.bulk_size = bulk_size
+
+    def execute(self, context):
+        requester = Requester(self.datastore_url, self.access_token)
+
+        raw_matches = pd.read_csv(self.filename, dtype=str).to_dict('records')
+
+        data = []
+        row_count = 0
+        for match in raw_matches:
+            data.append({
+                "trace_id": trace_id,
+                "project_id": project_id,
+            })
+            if len(data) >= self.bulk_size:
+                response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+                if response.status_code < 200 or response.status_code >= 300:
+                    return False
+                row_count += len(data)
+                logging.info("Loaded {} proj-trace maps, {} so far".format(len(data), row_count))
+                data = []
+
+        # leftovers
+        if len(data) > 0:
+            response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+            if response.status_code < 200 or response.status_code >= 300:
+                return False
+            row_count += len(data)
+            logging.info("Loaded {} proj-trace maps, {} so far".format(len(data), row_count))
+
+        logging.info("Completed loading {} proj-trace map records".format(row_count))
+
+
 class AuditFormattedDataOperator(BaseOperator):
     ui_color = '#f2e0d7'
 
