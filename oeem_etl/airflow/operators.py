@@ -23,25 +23,44 @@ class LoadProjectCSVOperator(BaseOperator):
                  datastore_url,
                  access_token,
                  project_owner=1,
+                 bulk_size=1000,
                  *args, **kwargs):
         super(LoadProjectCSVOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.datastore_url = datastore_url
         self.access_token = access_token
         self.project_owner = project_owner
+        self.bulk_size = bulk_size
 
     def execute(self, context):
         requester = Requester(self.datastore_url, self.access_token)
         data = pd.read_csv(self.filename, dtype=str).to_dict('records')
 
+        upload_data = []
+        row_count = 0
         for record in data:
             record['project_owner_id'] = self.project_owner
             record['added'] = datetime.utcnow().isoformat()
             record['updated'] = datetime.utcnow().isoformat()
+            upload_data.append(record)
 
-        logging.info("Loading {} project rows".format(len(data)))
-        response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
-        return response.status_code == 200
+            if len(upload_data) >= self.bulk_size:
+                row_count += len(upload_data)
+                logging.info("Loading {} rows, {} so far".format(len(upload_data), row_count))
+                response = requester.post(constants.PROJECT_BULK_UPSERT_URL, upload_data)
+                upload_data = []
+                if response.status_code != 200:
+                    raise RuntimeError('Bad response attempting to upsert')
+
+        # leftovers
+        if len(upload_data) > 0:
+            row_count += len(upload_data)
+            logging.info("Loading {} rows, {} so far".format(len(upload_data), row_count))
+            response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
+            if response.status_code != 200:
+                    raise RuntimeError('Bad response attempting to upsert')
+
+        logging.info("Loaded {} project rows".format(len(data)))
 
 
 class LoadProjectMetadataCSVOperator(BaseOperator):
