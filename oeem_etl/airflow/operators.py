@@ -82,16 +82,122 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                         'value': value.decode('utf-8').encode('utf-8'),
                     })
 
-                    if len(upload_data) > self.bulk_size:
+                    if len(upload_data) >= self.bulk_size:
                         response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
+                        if response.status_code != 200:
+                            return False
                         rows_loaded += len(upload_data)
                         logging.info("Loading {} rows, {} total so far".format(len(upload_data), rows_loaded))
                         upload_data = []
 
         # upload the leftovers
-        response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
-        rows_loaded += len(upload_data)
+        if len(upload_data) > 0:
+            response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
+            if response.status_code != 200:
+                return False
+            rows_loaded += len(upload_data)
         logging.info("{} metadata records loaded.".format(rows_loaded))
+
+
+class LoadTraceCSVOperator(BaseOperator):
+    ui_color = '#d1f7bb'
+
+    @apply_defaults
+    def __init__(self,
+                 filename,
+                 datastore_url,
+                 access_token,
+                 method='upsert',
+                 bulk_size=1000,
+                 *args, **kwargs):
+        super(LoadTraceCSVOperator, self).__init__(*args, **kwargs)
+        self.filename = filename
+        self.datastore_url = datastore_url
+        self.access_token = access_token
+        self.method = method
+        self.bulk_size = bulk_size
+
+    def execute(self, context):
+        requester = Requester(self.datastore_url, self.access_token)
+
+        try:
+            data = pd.read_csv(self.filename, dtype=str).to_dict('records')
+        except ValueError:
+            return True
+
+        unique_traces = list(set([
+            (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+        ]))
+
+        trace_data = [
+            {
+                "trace_id": trace[0],
+                "interpretation": trace[1],
+                "unit": trace[2],
+                "added": datetime.utcnow().isoformat(),
+                "updated": datetime.utcnow().isoformat(),
+            } for trace in unique_traces
+        ]
+
+        trace_response = requester.post(
+            constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
+        if trace_response.status_code < 200 or trace_response.status_code >=300:
+            return False
+        logging.info("Loaded {} traces".format(len(trace_data)))
+
+        trace_pks_by_id = {
+            record["trace_id"]: record["id"]
+            for record in trace_response.json()
+        }
+
+        def maybe_float(value):
+            try: return float(value)
+            except: return np.nan
+
+        trace_record_data = [
+            {
+                "trace_id": trace_pks_by_id[record["trace_id"]],
+                "value": maybe_float(record["value"]),
+                "start": record["start"],
+                "estimated": record["estimated"],
+            }
+            for record in data
+        ]
+
+        upload_data = []
+        rows_loaded = 0
+        for record in data:
+            trace_record = {
+                "trace_id": trace_pks_by_id[record["trace_id"]],
+                "value": maybe_float(record["value"]),
+                "start": record["start"],
+                "estimated": record["estimated"],
+            }
+
+            upload_data.append(trace_record)
+            if len(upload_data) >= self.bulk_size:
+                if self.method == "upsert":
+                    response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                elif self.method == "insert":
+                    response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                if response.status_code < 200 or response.status_code >=300:
+                    return False
+                rows_loaded += len(upload_data)
+                logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
+                upload_data = []
+
+        # load leftovers
+        if len(upload_data) > 0:
+            if self.method == "upsert":
+                response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+            elif self.method == "insert":
+                response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+            if response.status_code < 200 or response.status_code >=300:
+                return False
+            rows_loaded += len(upload_data)
+            logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
+
+        logging.info("Completed loading {} trace records".format(rows_loaded))
 
 
 class AuditFormattedDataOperator(BaseOperator):
