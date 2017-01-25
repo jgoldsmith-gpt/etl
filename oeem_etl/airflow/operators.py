@@ -85,7 +85,7 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                     if len(upload_data) >= self.bulk_size:
                         response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
                         if response.status_code != 200:
-                            return False
+                            raise RuntimeError('Bad response attempting to upsert')
                         rows_loaded += len(upload_data)
                         logging.info("Loading {} rows, {} total so far".format(len(upload_data), rows_loaded))
                         upload_data = []
@@ -94,7 +94,7 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
         if len(upload_data) > 0:
             response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
             if response.status_code != 200:
-                return False
+                raise RuntimeError('Bad response attempting to upsert')
             rows_loaded += len(upload_data)
         logging.info("{} metadata records loaded.".format(rows_loaded))
 
@@ -142,7 +142,7 @@ class LoadTraceCSVOperator(BaseOperator):
         trace_response = requester.post(
             constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
         if trace_response.status_code < 200 or trace_response.status_code >=300:
-            return False
+            raise RuntimeError('Bad response attempting to upsert')
         logging.info("Loaded {} traces".format(len(trace_data)))
 
         trace_pks_by_id = {
@@ -181,7 +181,7 @@ class LoadTraceCSVOperator(BaseOperator):
                 elif self.method == "insert":
                     response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
                 if response.status_code < 200 or response.status_code >=300:
-                    return False
+                    raise RuntimeError('Bad response attempting to upsert')
                 rows_loaded += len(upload_data)
                 logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
                 upload_data = []
@@ -193,7 +193,7 @@ class LoadTraceCSVOperator(BaseOperator):
             elif self.method == "insert":
                 response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
             if response.status_code < 200 or response.status_code >=300:
-                return False
+                raise RuntimeError('Bad response attempting to upsert')
             rows_loaded += len(upload_data)
             logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
 
@@ -219,28 +219,41 @@ class LoadProjectTraceMapCSVOperator(BaseOperator):
     def execute(self, context):
         requester = Requester(self.datastore_url, self.access_token)
 
+        response = requester.get(constants.PROJECT_ID_LIST_URL)
+        loaded_project_ids = response.json()
+
+        response = requester.get(constants.TRACE_ID_LIST_URL)
+        loaded_trace_ids = response.json()
+
+        trace_ids = {d["trace_id"]: d["id"] for d in loaded_trace_ids}
+        project_ids = {d["project_id"]: d["id"] for d in loaded_project_ids}
+
         raw_matches = pd.read_csv(self.filename, dtype=str).to_dict('records')
 
         data = []
         row_count = 0
         for match in raw_matches:
-            data.append({
-                "trace_id": trace_id,
-                "project_id": project_id,
-            })
-            if len(data) >= self.bulk_size:
-                response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
-                if response.status_code < 200 or response.status_code >= 300:
-                    return False
-                row_count += len(data)
-                logging.info("Loaded {} proj-trace maps, {} so far".format(len(data), row_count))
-                data = []
+            trace_id = trace_ids.get(match["trace_id"], None)
+            project_id = project_ids.get(match["project_id"], None)
+
+            if trace_id is not None and project_id is not None:
+                data.append({
+                    "trace_id": trace_id,
+                    "project_id": project_id,
+                })
+                if len(data) >= self.bulk_size:
+                    response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+                    if response.status_code < 200 or response.status_code >= 300:
+                        raise RuntimeError('Bad response attempting to upsert')
+                    row_count += len(data)
+                    logging.info("Loaded {} proj-trace maps, {} so far".format(len(data), row_count))
+                    data = []
 
         # leftovers
         if len(data) > 0:
             response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
             if response.status_code < 200 or response.status_code >= 300:
-                return False
+                raise RuntimeError('Bad response attempting to upsert')
             row_count += len(data)
             logging.info("Loaded {} proj-trace maps, {} so far".format(len(data), row_count))
 
