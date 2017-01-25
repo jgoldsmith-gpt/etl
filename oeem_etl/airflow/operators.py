@@ -56,7 +56,7 @@ class LoadProjectCSVOperator(BaseOperator):
         if len(upload_data) > 0:
             row_count += len(upload_data)
             logging.info("Loading {} rows, {} so far".format(len(upload_data), row_count))
-            response = requester.post(constants.PROJECT_BULK_UPSERT_URL, data)
+            response = requester.post(constants.PROJECT_BULK_UPSERT_URL, upload_data)
             if response.status_code != 200:
                     raise RuntimeError('Bad response attempting to upsert')
 
