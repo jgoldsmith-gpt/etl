@@ -7,6 +7,184 @@ import json
 import csv
 import logging
 import dateutil
+import glob
+
+
+class AuditFormattedDataOperator(BaseOperator):
+    ui_color = '#f2e0d7'
+
+    @apply_defaults
+    def __init__(self,
+                 project_path,
+                 trace_path,
+                 mappings_path,
+                 audit_results_file,
+                 min_baseline_period_days=365,
+                 min_reporting_period_days=365,
+                 *args, **kwargs):
+        super(AuditFormattedDataOperator, self).__init__(*args, **kwargs)
+        self.project_path = project_path
+        self.trace_path = trace_path
+        self.mappings_path = mappings_path
+        self.audit_results_file = audit_results_file
+        self.min_baseline_period_days = min_baseline_period_days
+        self.min_reporting_period_days = min_reporting_period_days
+
+    def execute(self, context):
+        task_output = {
+            'project_files_read': [],
+            'proj_trace_map_files_read': [],
+            'trace_files_read': [],
+            'projects_with_insufficient_baseline': [],
+            'projects_without_trace': [],
+            'projects_with_sufficient_baseline': [],
+            'projects_with_insufficient_reporting_period': [],
+            'projects_with_sufficient_reporting_period': [],
+            'passing_projects': []
+        }
+
+        projects = {}
+
+        logging.info("Reading projects...")
+        proj_records = 0
+        for filename in glob.glob(self.project_path):
+            if not filename.endswith('.DS_Store'):
+                with open(filename, 'r') as f_in:
+                    reader = csv.DictReader(f_in)
+                    for row in reader:
+                        proj_records += 1
+                        proj_id = row['project_id']
+                        projects.setdefault(proj_id, {})
+                        projects[proj_id]['baseline_period_end'] = row['baseline_period_end']
+                        projects[proj_id]['reporting_period_start'] = row['reporting_period_start']
+                task_output['project_files_read'].append(filename)
+        logging.info("{} project records read.".format(proj_records))
+
+        logging.info("Reading project-trace mappings...")
+        trace_proj_map = {}
+        proj_trace_records = 0
+        for filename in glob.glob(self.mappings_path):
+            if not filename.endswith('.DS_Store'):
+                with open(filename, 'r') as f_in:
+                    reader = csv.DictReader(f_in)
+                    for row in reader:
+                        proj_trace_records += 1
+                        proj_id = row['project_id']
+                        trace_id = row['trace_id']
+                        trace_proj_map[trace_id] = proj_id
+                task_output['proj_trace_map_files_read'].append(filename)
+        logging.info("{} proj-trace records read.".format(proj_trace_records))
+
+        logging.info("Reading traces...")
+        traces = {}
+        trace_records = 0
+        for filename in glob.glob(self.trace_path):
+            if not filename.endswith('.DS_Store'):
+                with open(filename, 'r') as f_in:
+                    reader = csv.DictReader(f_in)
+                    for row in reader:
+                        trace_records += 1
+                        trace_id = row['trace_id']
+                        traces.setdefault(trace_id, {})
+                        usage_date = row['start']
+                        if 'min_date' not in traces[trace_id]:
+                            traces[trace_id]['min_date'] = usage_date
+                        else:
+                            current_min = traces[trace_id]['min_date']
+                            d_usage_date = dateutil.parser.parse(usage_date)
+                            d_current_min = dateutil.parser.parse(current_min)
+                            if d_usage_date < d_current_min:
+                                traces[trace_id]['min_date'] = usage_date
+
+                        if 'max_date' not in traces[trace_id]:
+                            traces[trace_id]['max_date'] = usage_date
+                        else:
+                            current_max = traces[trace_id]['max_date']
+                            d_usage_date = dateutil.parser.parse(usage_date)
+                            d_current_max = dateutil.parser.parse(current_max)
+                            if d_usage_date > d_current_max:
+                                traces[trace_id]['max_date'] = usage_date
+
+                task_output['trace_files_read'].append(filename)
+
+        logging.info("{} trace records read.".format(trace_records))
+
+        logging.info("Determining min/max available usage dates for projects...")
+        for trace in traces:
+            proj_id = trace_proj_map[trace]
+            min_usage_date = traces[trace]['min_date']
+            max_usage_date = traces[trace]['max_date']
+            if 'min_date' not in projects[proj_id]:
+                projects[proj_id]['min_date'] = min_usage_date
+            else:
+                current_min = projects[proj_id]['min_date']
+                d_usage_date = dateutil.parser.parse(min_usage_date)
+                d_current_min = dateutil.parser.parse(current_min)
+                if d_usage_date < d_current_min:
+                    projects[proj_id]['min_date'] = min_usage_date
+
+            if 'max_date' not in projects[proj_id]:
+                projects[proj_id]['max_date'] = max_usage_date
+            else:
+                current_max = projects[proj_id]['max_date']
+                d_usage_date = dateutil.parser.parse(max_usage_date)
+                d_current_min = dateutil.parser.parse(current_max)
+                if d_usage_date > d_current_max:
+                    projects[proj_id]['max_date'] = max_usage_date
+
+        logging.info("Checking sufficient baseline/reporting period...")
+        for project in projects:
+            sufficient_baseline = False
+            sufficient_reporting_period = False
+
+            if 'min_date' in projects[project]:
+                baseline_period_end = projects[project]['baseline_period_end']
+                min_usage = projects[project]['min_date']
+                d_baseline_period_end = dateutil.parser.parse(baseline_period_end)
+                d_min_usage = dateutil.parser.parse(min_usage)
+                delta = d_baseline_period_end - d_min_usage
+                if delta.days < self.min_baseline_period_days:
+                    if project not in task_output['projects_with_insufficient_baseline']:
+                        task_output['projects_with_insufficient_baseline'].append(project)
+                else:
+                    if project not in task_output['projects_with_sufficient_baseline']:
+                        task_output['projects_with_sufficient_baseline'].append(project)
+                        sufficient_baseline = True
+
+            if 'max_date' in projects[project]:
+                reporting_period_start = projects[project]['reporting_period_start']
+                max_usage = projects[project]['max_date']
+                d_reporting_period_start = dateutil.parser.parse(reporting_period_start)
+                d_max_usage = dateutil.parser.parse(max_usage)
+                delta = d_max_usage - d_reporting_period_start
+                if delta.days < self.min_reporting_period_days:
+                    if project not in task_output['projects_with_insufficient_reporting_period']:
+                        task_output['projects_with_insufficient_reporting_period'].append(project)
+                else:
+                    if project not in task_output['projects_with_sufficient_reporting_period']:
+                        task_output['projects_with_sufficient_reporting_period'].append(project)
+                        sufficient_reporting_period = True
+
+            if 'min_date' not in projects[project] and 'max_date' not in projects[project]:
+                if project not in task_output['projects_without_trace']:
+                    task_output['projects_without_trace'].append(project)
+
+            if sufficient_baseline and sufficient_reporting_period:
+                if project not in task_output['passing_projects']:
+                    task_output['passing_projects'].append(project)
+
+        task_output['projects'] = projects
+        task_output['trace_proj_map'] = trace_proj_map
+        task_output['traces'] = traces
+
+        totals = {}
+        for key in task_output:
+            totals[key] = len(task_output[key])
+            logging.info("{}: {}".format(key, totals[key]))
+        task_output['totals'] = totals
+
+        with open(self.audit_results_file, 'w') as f_out:
+            f_out.write(json.dumps(task_output, indent=2))
 
 
 class GoogleCloudStorageUploadOperator(BaseOperator):
