@@ -4,7 +4,6 @@ from airflow.utils.decorators import apply_defaults
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
 from oeem_etl.requester import Requester
 from oeem_etl import constants
-from requests.exceptions import SSLError
 import os
 import json
 import csv
@@ -48,7 +47,7 @@ class LoadProjectCSVOperator(BaseOperator):
             if len(upload_data) >= self.bulk_size:
                 row_count += len(upload_data)
                 logging.info("Loading {} rows, {} so far".format(len(upload_data), row_count))
-                response = requester.post(constants.PROJECT_BULK_UPSERT_URL, upload_data)
+                response = requester.upload_chunk(constants.PROJECT_BULK_UPSERT_URL, upload_data)
                 upload_data = []
                 if response.status_code != 200:
                     raise RuntimeError('Bad response attempting to upsert')
@@ -57,7 +56,7 @@ class LoadProjectCSVOperator(BaseOperator):
         if len(upload_data) > 0:
             row_count += len(upload_data)
             logging.info("Loading {} rows, {} so far".format(len(upload_data), row_count))
-            response = requester.post(constants.PROJECT_BULK_UPSERT_URL, upload_data)
+            response = requester.upload_chunk(constants.PROJECT_BULK_UPSERT_URL, upload_data)
             if response.status_code != 200:
                     raise RuntimeError('Bad response attempting to upsert')
 
@@ -103,13 +102,7 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                     })
 
                     if len(upload_data) >= self.bulk_size:
-                        while True:
-                            try:
-                                response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
-                            except SSLError:
-                                logging.info("Connection reset, retrying")
-                                continue
-                            break
+                        response = requester.upload_chunk(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
                         if response.status_code != 200:
                             raise RuntimeError('Bad response attempting to upsert')
                         rows_loaded += len(upload_data)
@@ -118,7 +111,7 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
 
         # upload the leftovers
         if len(upload_data) > 0:
-            response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
+            response = requester.upload_chunk(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
             if response.status_code != 200:
                 raise RuntimeError('Bad response attempting to upsert')
             rows_loaded += len(upload_data)
@@ -170,8 +163,6 @@ class LoadTraceCSVOperator(BaseOperator):
 
             if len(upload_data) >= self.bulk_size / 2: # trace endpoint seems slow by comparison
                 trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
-                # trace_response = requester.post(
-                #     constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
                 row_count += len(upload_data)
 
                 if trace_response.status_code < 200 or trace_response.status_code >= 300:
@@ -186,8 +177,6 @@ class LoadTraceCSVOperator(BaseOperator):
         # leftovers
         if len(upload_data) > 0:
             trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
-            # trace_response = requester.post(
-            #     constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
             row_count += len(upload_data)
 
             if trace_response.status_code < 200 or trace_response.status_code >= 300:
@@ -229,10 +218,8 @@ class LoadTraceCSVOperator(BaseOperator):
             if len(upload_data) >= self.bulk_size:
                 if self.method == "upsert":
                     response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
-                    # response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
                 elif self.method == "insert":
                     response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
-                    # response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
                 if response.status_code < 200 or response.status_code >=300:
                     raise RuntimeError('Bad response attempting to upsert')
                 rows_loaded += len(upload_data)
@@ -243,10 +230,8 @@ class LoadTraceCSVOperator(BaseOperator):
         if len(upload_data) > 0:
             if self.method == "upsert":
                 response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
-                # response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
             elif self.method == "insert":
                 response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
-                # response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
             if response.status_code < 200 or response.status_code >=300:
                 raise RuntimeError('Bad response attempting to upsert')
             rows_loaded += len(upload_data)
@@ -297,7 +282,7 @@ class LoadProjectTraceMapCSVOperator(BaseOperator):
                     "project_id": project_id,
                 })
                 if len(data) >= self.bulk_size:
-                    response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+                    response = requester.upload_chunk(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
                     if response.status_code < 200 or response.status_code >= 300:
                         raise RuntimeError('Bad response attempting to upsert')
                     row_count += len(data)
@@ -306,7 +291,7 @@ class LoadProjectTraceMapCSVOperator(BaseOperator):
 
         # leftovers
         if len(data) > 0:
-            response = requester.post(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
+            response = requester.upload_chunk(constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, data)
             if response.status_code < 200 or response.status_code >= 300:
                 raise RuntimeError('Bad response attempting to upsert')
             row_count += len(data)

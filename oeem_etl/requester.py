@@ -1,5 +1,6 @@
 import requests
 import os
+import logging
 
 class Requester(object):
     """Makes datastore API requests.
@@ -97,7 +98,7 @@ class Requester(object):
             except requests.exceptions.SSLError:
                 if retry > retries:
                     raise
-                print("Connection reset, retry {}".format(retry))
+                logging.info("Connection reset, retry {}".format(retry))
                 continue
             break
         return r
