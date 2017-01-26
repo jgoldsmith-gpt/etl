@@ -169,8 +169,9 @@ class LoadTraceCSVOperator(BaseOperator):
             })
 
             if len(upload_data) >= self.bulk_size / 2: # trace endpoint seems slow by comparison
-                trace_response = requester.post(
-                    constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
+                trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
+                # trace_response = requester.post(
+                #     constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
                 row_count += len(upload_data)
 
                 if trace_response.status_code < 200 or trace_response.status_code >= 300:
@@ -184,8 +185,9 @@ class LoadTraceCSVOperator(BaseOperator):
 
         # leftovers
         if len(upload_data) > 0:
-            trace_response = requester.post(
-                constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
+            trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
+            # trace_response = requester.post(
+            #     constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
             row_count += len(upload_data)
 
             if trace_response.status_code < 200 or trace_response.status_code >= 300:
@@ -226,9 +228,11 @@ class LoadTraceCSVOperator(BaseOperator):
             upload_data.append(trace_record)
             if len(upload_data) >= self.bulk_size:
                 if self.method == "upsert":
-                    response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                    response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                    # response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
                 elif self.method == "insert":
-                    response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                    response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                    # response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
                 if response.status_code < 200 or response.status_code >=300:
                     raise RuntimeError('Bad response attempting to upsert')
                 rows_loaded += len(upload_data)
@@ -238,9 +242,11 @@ class LoadTraceCSVOperator(BaseOperator):
         # load leftovers
         if len(upload_data) > 0:
             if self.method == "upsert":
-                response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                # response = requester.post(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
             elif self.method == "insert":
-                response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                # response = requester.post(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
             if response.status_code < 200 or response.status_code >=300:
                 raise RuntimeError('Bad response attempting to upsert')
             rows_loaded += len(upload_data)
