@@ -4,6 +4,7 @@ from airflow.utils.decorators import apply_defaults
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
 from oeem_etl.requester import Requester
 from oeem_etl import constants
+from requests.exceptions import SSLError
 import os
 import json
 import csv
@@ -102,7 +103,13 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                     })
 
                     if len(upload_data) >= self.bulk_size:
-                        response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
+                        while True:
+                            try:
+                                response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, upload_data)
+                            except SSLError:
+                                logging.info("Connection reset, retrying")
+                                continue
+                            break
                         if response.status_code != 200:
                             raise RuntimeError('Bad response attempting to upsert')
                         rows_loaded += len(upload_data)
