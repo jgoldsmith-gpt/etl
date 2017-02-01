@@ -1,15 +1,30 @@
-# Shared ETL utility functions
-This is a shared library of routines for writing ETL pipelines for OEEM Datastore instances. Features include:
-
-- fetch energy data from ESPI APIs
-- GCS support
-- OEEM datastore loading
-
 ## Install
 
     git clone https://github.com/impactlab/oeem-etl
     cd oeem-etl
     pip install -e .
+
+# OEE Airflow Operators
+This library includes operators for the [Airflow](http://nerds.airbnb.com/airflow/) platform.
+
+Included are:
+- OEEM datastore loading operators
+- Generic/flexible CSV translation operator
+- Additional GCS operators
+
+Using these is as simple as installing the library and utilizing them in your Airflow DAGs.
+
+The CSV translation operator can help you get data into the *Data Format* below for use by
+datastore loading operators.
+
+***
+
+# Luigi Shared ETL utility functions
+This is a shared library of routines for writing ETL pipelines for OEEM Datastore instances. Features include:
+
+- fetch energy data from ESPI APIs
+- GCS support
+- OEEM datastore loading
 
 ## Configure
 
@@ -35,6 +50,8 @@ An example of a command to run a Luigi task from a client-specific module:
     luigi --module oeem_etl_client LoadAll --local-scheduler
 
 The client module that implements the task should be installed where Luigi can find it (e.g. `pip install -e .`).
+
+***
 
 ## Data Format
 
