@@ -15,6 +15,9 @@ import pandas as pd
 
 
 class LoadProjectCSVOperator(BaseOperator):
+    """
+    Loads OEE formatted Project file to OEE datastore
+    """
     ui_color = '#d1f7bb'
 
     @apply_defaults
@@ -25,6 +28,18 @@ class LoadProjectCSVOperator(BaseOperator):
                  project_owner=1,
                  bulk_size=1000,
                  *args, **kwargs):
+                """
+        :param filename: Project-Trace mapping file to load
+        :type filename: string
+        :param datastore_url: URL of the target datastore
+        :type datastore_url: string
+        :param access_token: OAuth access token of the target datastore
+        :type access_token: string
+        :param project_owner: Id of project owner to use for the file, defaults to 1
+        :type project_owner: int
+        :param bulk_size: Number of records to process per API call, defaults to 1000
+        :type bulk_size: int
+        """
         super(LoadProjectCSVOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.datastore_url = datastore_url
@@ -64,6 +79,9 @@ class LoadProjectCSVOperator(BaseOperator):
 
 
 class LoadProjectMetadataCSVOperator(BaseOperator):
+    """
+    Loads OEE formatted Project Metadata file to OEE datastore
+    """
     ui_color = '#d1f7bb'
 
     @apply_defaults
@@ -73,6 +91,16 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                  access_token,
                  bulk_size=1000,
                  *args, **kwargs):
+                """
+        :param filename: Project Metadata file to load
+        :type filename: string
+        :param datastore_url: URL of the target datastore
+        :type datastore_url: string
+        :param access_token: OAuth access token of the target datastore
+        :type access_token: string
+        :param bulk_size: Number of records to process per API call, defaults to 1000
+        :type bulk_size: int
+        """
         super(LoadProjectMetadataCSVOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.datastore_url = datastore_url
@@ -119,6 +147,9 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
 
 
 class LoadTraceCSVOperator(BaseOperator):
+    """
+    Loads OEE formatted trace file to OEE datastore
+    """
     ui_color = '#d1f7bb'
 
     @apply_defaults
@@ -129,6 +160,18 @@ class LoadTraceCSVOperator(BaseOperator):
                  method='upsert',
                  bulk_size=1000,
                  *args, **kwargs):
+                """
+        :param filename: Trace file to load
+        :type filename: string
+        :param datastore_url: URL of the target datastore
+        :type datastore_url: string
+        :param access_token: OAuth access token of the target datastore
+        :type access_token: string
+        :param method: Either 'upsert' or 'insert', defaults to 'upsert'
+        :type method: string
+        :param bulk_size: Number of records to process per API call, defaults to 1000
+        :type bulk_size: int
+        """
         super(LoadTraceCSVOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.datastore_url = datastore_url
@@ -241,6 +284,9 @@ class LoadTraceCSVOperator(BaseOperator):
 
 
 class LoadProjectTraceMapCSVOperator(BaseOperator):
+    """
+    Loads an OEE formatted project-trace mappings file into an OEE datastore
+    """
     ui_color = '#d1f7bb'
 
     @apply_defaults
@@ -250,6 +296,16 @@ class LoadProjectTraceMapCSVOperator(BaseOperator):
                  access_token,
                  bulk_size=1000,
                  *args, **kwargs):
+        """
+        :param filename: Project-Trace mapping file to load
+        :type filename: string
+        :param datastore_url: URL of the target datastore
+        :type datastore_url: string
+        :param access_token: OAuth access token of the target datastore
+        :type access_token: string
+        :param bulk_size: Number of records to process per API call, defaults to 1000
+        :type bulk_size: int
+        """
         super(LoadProjectTraceMapCSVOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.datastore_url = datastore_url
@@ -301,6 +357,19 @@ class LoadProjectTraceMapCSVOperator(BaseOperator):
 
 
 class AuditFormattedDataOperator(BaseOperator):
+    """
+    Performs audit of OEE formatted data given a set of project files, trace
+    files, and proejct-trace mapping files to scan.
+
+    Output of the audit is JSON formatted and includes info regarding:
+    - Projects with insufficient/sufficient baselines
+    - Projects without an associated trace
+    - Projects with insufficient/sufficient reporting periods
+    - Projects that pass all of the above checks
+
+    Baseline and reporting period minimums default to one year (365 days) but
+    can be dialed up/down depending on needs.
+    """
     ui_color = '#f2e0d7'
 
     @apply_defaults
@@ -312,6 +381,21 @@ class AuditFormattedDataOperator(BaseOperator):
                  min_baseline_period_days=365,
                  min_reporting_period_days=365,
                  *args, **kwargs):
+        """
+        :param project_path: Glob containing project files to scan
+        :type project_path: string
+        :param trace_path: Glob containing trace files to scan
+        :type trace_path: string
+        :param mappings_path: Glob containing project-trace mapping files to scan
+        :type mappings_path: string
+        :param audit_results_file: Path to write audit results file
+        :type audit_results_file: string
+        :param min_baseline_period_days: Minimum acceptable number of days for baseline
+        :type min_baseline_period_days: int
+        :param min_reporting_period_days: Minimum acceptable number of days for reporting
+                                          period
+        :type min_reporting_period_days: int
+        """
         super(AuditFormattedDataOperator, self).__init__(*args, **kwargs)
         self.project_path = project_path
         self.trace_path = trace_path
@@ -491,6 +575,16 @@ class GoogleCloudStorageUploadOperator(BaseOperator):
                  gcs_conn_id='google_cloud_storage_default',
                  *args,
                  **kwargs):
+        """
+        :param filename: Path of local file to upload
+        :type filename: string
+        :param target: Name of target to upload to on GCS
+        :type target: string
+        :param bucket: Name of GCS bucket to use
+        :type bucket: string
+        :param gcs_conn_id: Name of Airflow connection id to use
+        :type gcs_conn_id: string
+        """
         super(GoogleCloudStorageUploadOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.target = target
@@ -503,6 +597,9 @@ class GoogleCloudStorageUploadOperator(BaseOperator):
 
 
 class GoogleCloudStorageFileSensor(BaseSensorOperator):
+    """
+    Checks GCS for presence of a file
+    """
     ui_color = '#18f4e9'
 
     @apply_defaults
@@ -512,6 +609,14 @@ class GoogleCloudStorageFileSensor(BaseSensorOperator):
                  gcs_conn_id='google_cloud_storage_default',
                  *args, 
                  **kwargs):
+        """
+        :param bucket: GCS bucket name to check
+        :type bucket: string
+        :param object: GCS object to check
+        :type object: string
+        :param gcs_conn_id: Name of Airflow connection id to use
+        :type gcs_conn_id: string
+        """
         super(GoogleCloudStorageFileSensor, self).__init__(*args, **kwargs)
         self.bucket = bucket
         self.object = object
@@ -558,6 +663,15 @@ class CreateProjTraceMapFromJsonOperator(BaseOperator):
                  *args,
                  **kwargs):
         """
+        :param in_file: Path to incoming JSON file
+        :type in_file: string
+        :param out_file: Path to outgoing CSV file
+        :type out_file: string
+        :param map_name: Key name for map containing keys to list values
+        :type map_name: string
+        :param row_functions: Optional list of functions that will be applied CSV
+                              rows before writing
+        :param row_functions: list
         """
         super(CreateProjTraceMapFromJsonOperator, self).__init__(*args, **kwargs)
         self.in_file = in_file
