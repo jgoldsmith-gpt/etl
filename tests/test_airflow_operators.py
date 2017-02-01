@@ -37,6 +37,19 @@ def temp_out_file(tmpdir_factory):
     file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('temp_out.txt')
     return str(file)
 
+@pytest.fixture(scope='session')
+def sample_csv_data(tmpdir_factory):
+    data = (
+        "fargle,blargle,gargle\n"
+        "Bonds,Barry,762\n"
+        "Aaron,Hank,755\n"
+        "Ruth,Babe,714\n"
+        )
+
+    file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('tranlsate_csv.csv')
+    file.write(data)
+    return str(file)
+
 def test_create_proj_trace_map_from_json_operator(test_dag, proj_trace_data, temp_out_file):
     task = CreateProjTraceMapFromJsonOperator(
         task_id='test_create_proj_trace_map_from_json',
@@ -71,6 +84,39 @@ def test_create_proj_trace_map_from_json_operator(test_dag, proj_trace_data, tem
     assert p2_has_t3, "P2 did not have T3"
     assert not unexpected, "Unexpected map found"
 
+def test_translate_csv(test_dag, sample_csv_data, temp_out_file):
+    task = TranslateCSVOperator(
+        task_id='test_translate_csv',
+        in_file=sample_csv_data,
+        out_file=temp_out_file,
+        field_map={
+            'fargle': ['last_name'],
+            'bargle': ['first_name'],
+            'gargle': ['career_hrs'],
+        },
+        dag=test_dag)
 
+    task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-    
+    bonds = False
+    aaron = False
+    ruth = False
+    unexpected = False
+    with open(temp_out_file, 'r') as f_out:
+        reader = csv.DictReader(f_out)
+        for row in reader:
+            name = row['last_name']
+            hrs = int(row['career_hrs'])
+            if name == 'Bonds' and hrs == 762:
+                bonds = True
+            elif name == 'Aaron' and hrs == 755:
+                aaron = True
+            elif name == 'Ruth' and hrs == 714:
+                ruth = True
+            else:
+                unexpected = True
+
+    assert bonds, "Bonds should have 762 HRs"
+    assert aaron, "Aaron should have 755 HRs"
+    assert ruth, "Ruth should have 714 HRs"
+    assert not unexpected, "Unexpected values found"
