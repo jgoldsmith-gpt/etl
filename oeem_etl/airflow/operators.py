@@ -683,6 +683,7 @@ class TranslateCSVOperator(BaseOperator):
 
         with open(in_file, 'r') as f_in:
             reader = csv.DictReader(f_in, skipinitialspace=True)
+            
             with open(out_file, 'w') as f_out:
                 writer = None
                 first_row = True
