@@ -1,7 +1,6 @@
 from airflow.models import BaseOperator
-from airflow.operators.sensors import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
-from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
+from oeem_etl.airflow.hooks import GCSHook
 from oeem_etl.requester import Requester
 from oeem_etl import constants
 import os
@@ -561,7 +560,40 @@ class AuditFormattedDataOperator(BaseOperator):
             f_out.write(json.dumps(task_output, indent=2))
 
 
-class GoogleCloudStorageUploadOperator(BaseOperator):
+class GCSDownloadOperator(BaseOperator):
+    """
+    Downloads a file from GCS
+    """
+    ui_color = '#42cbf4'
+
+    @apply_defaults
+    def __init__(self,
+                 bucket,
+                 object,
+                 filename=False,
+                 store_to_xcom_key=False,
+                 gcs_conn_id='google_cloud_storage_default',
+                 *args, **kwargs):
+        super(GCSDownloadOperator, self).__init__(*args, **kwargs)
+        self.bucket = bucket
+        self.object = object
+        self.filename = filename
+        self.store_to_xcom_key = store_to_xcom_key
+        self.gcs_conn_id = gcs_conn_id
+
+    def execute(self, context):
+        hook = GCSHook(conn_id=self.gcs_conn_id)
+        file_bytes = hook.download(bucket=self.bucket, object=self.object, filename=self.filename)
+
+        if self.store_to_xcom_key:
+            if sys.getsizeof(file_bytes) < 48000:
+                context['ti'].xcom_push(key=self.store_to_xcom_key, value=file_bytes)
+            else:
+                raise RuntimeError('The size of the downloaded file is too large to push to XCom!')
+        logging.info(file_bytes)
+
+
+class GCSUploadOperator(BaseOperator):
     """
     Uploads a file to GCS
     """
@@ -585,14 +617,14 @@ class GoogleCloudStorageUploadOperator(BaseOperator):
         :param gcs_conn_id: Name of Airflow connection id to use
         :type gcs_conn_id: string
         """
-        super(GoogleCloudStorageUploadOperator, self).__init__(*args, **kwargs)
+        super(GCSUploadOperator, self).__init__(*args, **kwargs)
         self.filename = filename
         self.target = target
         self.bucket = bucket
         self.gcs_conn_id = gcs_conn_id
 
     def execute(self, context):
-        hook = GoogleCloudStorageHook(google_cloud_storage_conn_id=self.gcs_conn_id)
+        hook = GCSHook(conn_id=self.gcs_conn_id)
         hook.upload(bucket=self.bucket, object=self.target, filename=self.filename)
 
 
