@@ -28,7 +28,7 @@ class LoadProjectCSVOperator(BaseOperator):
                  project_owner=1,
                  bulk_size=1000,
                  *args, **kwargs):
-                """
+        """
         :param filename: Project-Trace mapping file to load
         :type filename: string
         :param datastore_url: URL of the target datastore
@@ -91,7 +91,7 @@ class LoadProjectMetadataCSVOperator(BaseOperator):
                  access_token,
                  bulk_size=1000,
                  *args, **kwargs):
-                """
+        """
         :param filename: Project Metadata file to load
         :type filename: string
         :param datastore_url: URL of the target datastore
@@ -160,7 +160,7 @@ class LoadTraceCSVOperator(BaseOperator):
                  method='upsert',
                  bulk_size=1000,
                  *args, **kwargs):
-                """
+        """
         :param filename: Trace file to load
         :type filename: string
         :param datastore_url: URL of the target datastore
@@ -594,48 +594,6 @@ class GoogleCloudStorageUploadOperator(BaseOperator):
     def execute(self, context):
         hook = GoogleCloudStorageHook(google_cloud_storage_conn_id=self.gcs_conn_id)
         hook.upload(bucket=self.bucket, object=self.target, filename=self.filename)
-
-
-class GoogleCloudStorageFileSensor(BaseSensorOperator):
-    """
-    Checks GCS for presence of a file
-    """
-    ui_color = '#18f4e9'
-
-    @apply_defaults
-    def __init__(self, 
-                 bucket, 
-                 object, 
-                 gcs_conn_id='google_cloud_storage_default',
-                 *args, 
-                 **kwargs):
-        """
-        :param bucket: GCS bucket name to check
-        :type bucket: string
-        :param object: GCS object to check
-        :type object: string
-        :param gcs_conn_id: Name of Airflow connection id to use
-        :type gcs_conn_id: string
-        """
-        super(GoogleCloudStorageFileSensor, self).__init__(*args, **kwargs)
-        self.bucket = bucket
-        self.object = object
-        self.gcs_conn_id = gcs_conn_id
-
-    def poke(self, context):
-        hook = GoogleCloudStorageHook(google_cloud_storage_conn_id=self.gcs_conn_id)
-        logging.info('Poking: ' + self.object + ' in ' + self.bucket)
-        service = hook.get_conn()
-        try:
-            service \
-                .objects() \
-                .get(bucket=self.bucket, object=self.object) \
-                .execute()
-            return True
-        except errors.HttpError as ex:
-            if ex.resp['status'] == '404':
-                return False
-            raise
 
 
 class CreateProjTraceMapFromJsonOperator(BaseOperator):
