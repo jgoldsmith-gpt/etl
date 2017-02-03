@@ -6,7 +6,7 @@ long_description = '''Utilities to facilitate data ETL for OEEM Datastore. Inclu
                    datastore.'''
 setup(
     name='oeem_etl',
-    version='0.1.1',
+    version='0.1.2',
     description='Open Energy Efficiency Meter ETL utils',
     long_description=long_description,
     url='https://github.com/openeemeter/etl/',
@@ -22,8 +22,8 @@ setup(
         'luigi',
         'boto',
         'py',
-        'google-api-python-client>=1.6.1',
-        'oauth2client>=4.0.0',
+        'google-api-python-client>=1.6.0',
+        'oauth2client>=3.0.0',
         'requests>=2.10.0',
         'pyopenssl',
         'ndg-httpsclient',
