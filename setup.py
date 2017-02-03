@@ -18,7 +18,7 @@ setup(
         'Programming Language :: Python :: 3',
     ],
     install_requires=[
-        'airflow[hive,crypto,password,gcp_api]',
+        'airflow[hive,crypto,password]',
         'eemeter',
         'luigi',
         'boto',
