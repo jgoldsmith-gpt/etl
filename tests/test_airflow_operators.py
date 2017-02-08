@@ -4,11 +4,24 @@ from datetime import datetime
 from airflow import DAG
 import json
 import csv
+import mock
 from oeem_etl.airflow.operators import *
+from oeem_etl.requester import Requester
 
 DEFAULT_DATE = datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
 TEST_DAG_ID = 'unit_test_dag'
+
+
+class MockResponse(object):
+    pass
+
+
+@pytest.fixture(autouse=True)
+def pass_datastore_requests(monkeypatch):
+    response = MockResponse()
+    response.status_code = 200
+    monkeypatch.setattr(Requester, 'upload_chunk', lambda x, y, z: response)
 
 @pytest.fixture
 def test_dag():
@@ -47,6 +60,18 @@ def sample_csv_data(tmpdir_factory):
         )
 
     file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('tranlsate_csv.csv')
+    file.write(data)
+    return str(file)
+
+@pytest.fixture(scope='session')
+def sample_project_csv_data(tmpdir_factory):
+    data = (
+        "project_id,zipcode,baseline_period_end,reporting_period_start\n"
+        "1,19806,2015-01-01,2015-01-02\n"
+        "2,19801,1978-08-06,1978-08-07\n"
+    )
+
+    file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('project_csv.csv')
     file.write(data)
     return str(file)
 
@@ -120,3 +145,20 @@ def test_translate_csv(test_dag, sample_csv_data, temp_out_file):
     assert aaron, "Aaron should have 755 HRs"
     assert ruth, "Ruth should have 714 HRs"
     assert not unexpected, "Unexpected values found"
+
+def mock_response():
+    response = {}
+    response.status_code = 200
+    return response
+
+def test_load_project_csv_operator(test_dag, sample_project_csv_data):
+    task = LoadProjectCSVOperator(
+        task_id='test_load_project_csv',
+        filename=sample_project_csv_data,
+        datastore_url='http://datastore',
+        access_token='token',
+        dag=test_dag)
+
+    task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+
