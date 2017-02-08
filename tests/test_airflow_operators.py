@@ -75,6 +75,18 @@ def sample_project_csv_data(tmpdir_factory):
     file.write(data)
     return str(file)
 
+@pytest.fixture(scope='session')
+def sample_metadata_csv_data(tmpdir_factory):
+    data = (
+        "project_id,some_field,some_other_field\n"
+        "1,1,one\n"
+        "2,2,two\n"
+        )
+
+    file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('metadata_csv.csv')
+    file.write(data)
+    return str(file)
+
 def test_create_proj_trace_map_from_json_operator(test_dag, proj_trace_data, temp_out_file):
     task = CreateProjTraceMapFromJsonOperator(
         task_id='test_create_proj_trace_map_from_json',
@@ -146,15 +158,20 @@ def test_translate_csv(test_dag, sample_csv_data, temp_out_file):
     assert ruth, "Ruth should have 714 HRs"
     assert not unexpected, "Unexpected values found"
 
-def mock_response():
-    response = {}
-    response.status_code = 200
-    return response
-
 def test_load_project_csv_operator(test_dag, sample_project_csv_data):
     task = LoadProjectCSVOperator(
         task_id='test_load_project_csv',
         filename=sample_project_csv_data,
+        datastore_url='http://datastore',
+        access_token='token',
+        dag=test_dag)
+
+    task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+def test_load_project_metadata_csv_operator(test_dag, sample_metadata_csv_data):
+    task = LoadProjectMetadataCSVOperator(
+        task_id='test_load_metadata_csv',
+        filename=sample_metadata_csv_data,
         datastore_url='http://datastore',
         access_token='token',
         dag=test_dag)
