@@ -19,7 +19,7 @@ setup(
     ],
     install_requires=[
         'airflow[hive,crypto,password]',
-        'eemeter',
+        'eemeter>=0.4',
         'luigi',
         'boto',
         'py',

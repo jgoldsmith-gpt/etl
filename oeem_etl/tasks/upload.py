@@ -37,26 +37,57 @@ def bulk_load_project_csv(f):
 
 def bulk_load_project_metadata_csv(f):
     requester = Requester(config.oeem.url, config.oeem.access_token)
+
     input_data = read_csv_file(f)
 
-    # Reshape
+    if len(input_data) == 0:
+        print("No data to upload.")
+        return True
+
+    # auto-detect wide/tall (pivoted, unpivoted) format
+    columns = input_data[0].keys()
     data = []
-    for row in input_data:
-        for key, value in row.items():
-            if value is None:
-                continue
-            if value.strip() == '':
-                continue
-            if key == 'project_id':
+    if set(columns) == set(['project_id', 'key', 'value']):
+        # tall format
+        for row in input_data:
+            key = row['key']
+            value = row['value']
+            if value is None or value.strip() == '':
                 continue
             data.append({
                 'project_id': row['project_id'],
                 'key': key.decode('utf-8').encode('utf-8'),
                 'value': value.decode('utf-8').encode('utf-8')
             })
+    else:
+        # wide format
+        for row in input_data:
+            for key, value in row.items():
+                if value is None:
+                    continue
+                if value.strip() == '':
+                    continue
+                if key == 'project_id':
+                    continue
+                data.append({
+                    'project_id': row['project_id'],
+                    'key': key.decode('utf-8').encode('utf-8'),
+                    'value': value.decode('utf-8').encode('utf-8')
+                })
 
-    response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, data)
-    return response.status_code == 200
+
+    n = len(data)
+    batch_size = 500
+    print(
+        "Uploading {} rows of metadata in {} batches of {}"
+        .format(n, n/batch_size, batch_size)
+    )
+
+    success = []
+    for batch in tqdm(batches(data, batch_size)):
+        response = requester.post(constants.PROJECT_METADATA_BULK_UPSERT_URL, batch)
+        success.append(response.status_code == 200)
+    return all(success)
 
 def bulk_load_trace_csv(f, method="upsert"):
     requester = Requester(config.oeem.url, config.oeem.access_token)
@@ -135,6 +166,20 @@ def bulk_load_project_trace_mapping_csv(f):
             constants.PROJECT_TRACE_MAPPING_BULK_UPSERT_VERBOSE_URL, batch)
 
     return response.status_code == 201
+
+def bulk_load_trace_blacklist(f):
+    requester = Requester(config.oeem.url, config.oeem.access_token)
+
+    input_data = read_csv_file(f)
+
+    successes = []
+    for batch in tqdm(batches(input_data, 500)):
+        response = requester.post(
+            constants.TRACE_BLACKLIST_UPSERT_VERBOSE_URL, batch)
+
+        successes.append(response.status_code == 201)
+
+    return all(successes)
 
 def formatted2uploaded_path(path):
     return mirror_path(path,
@@ -244,7 +289,7 @@ class LoadProjectMetadata(luigi.Task):
     def path(self):
         return config.oeem.full_path(config.oeem.OEEM_FORMAT_PROJECT_METADATA_PATH)
 
-    def requires(self): 
+    def requires(self):
         return FetchFile(self.path)
 
     def write_flag(self):
@@ -260,4 +305,26 @@ class LoadProjectMetadata(luigi.Task):
         target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
         return target
 
+class LoadTraceBlacklist(luigi.Task):
+
+    @property
+    def path(self):
+        return config.oeem.full_path(config.oeem.OEEM_FORMAT_TRACE_BLACKLIST_PATH)
+
+    def requires(self):
+        return FetchFile(self.path)
+
+    def write_flag(self):
+        uploaded_path = formatted2uploaded_path(self.path)
+        target = config.oeem.target_class(os.path.join(uploaded_path, "_SUCCESS"))
+        with target.open('w') as f: pass
+
+    def run(self):
+        success = bulk_load_trace_blacklist(self.input().open('r'))
+
+        if success:
+            self.write_flag()
+
+    def output(self):
+        return config.oeem.flag_target_class(formatted2uploaded_path(self.path))
 
