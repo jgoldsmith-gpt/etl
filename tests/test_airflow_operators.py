@@ -7,6 +7,7 @@ import csv
 import mock
 from oeem_etl.airflow.operators import *
 from oeem_etl.requester import Requester
+from oeem_etl import constants
 
 DEFAULT_DATE = datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
@@ -14,7 +15,11 @@ TEST_DAG_ID = 'unit_test_dag'
 
 
 class MockResponse(object):
-    pass
+    def json(self):
+        return [
+            { "trace_id": "1", "id": "1" },
+            { "trace_id": "2", "id": "2" },
+        ]
 
 
 @pytest.fixture(autouse=True)
@@ -84,6 +89,31 @@ def sample_metadata_csv_data(tmpdir_factory):
         )
 
     file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('metadata_csv.csv')
+    file.write(data)
+    return str(file)
+
+@pytest.fixture(scope='session')
+def sample_trace_csv_data(tmpdir_factory):
+    data = (
+        "trace_id,interpretation,unit,value,start,estimated\n"
+        "1,ELECTRICITY_CONSUMPTION_SUPPLIED,KWH,321,2015-01-01,False\n"
+        "2,NATURAL_GAS_CONSUMPTION_SUPPLIED,THERM,123,2015-02-02,True\n"
+        )
+
+    file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('trace_csv.csv')
+    file.write(data)
+    return str(file)
+
+@pytest.fixture(scope='session')
+def sample_proj_trace_map_csv_data(tmpdir_factory):
+    data = (
+        "project_id,trace_id\n"
+        "1,1\n"
+        "1,2\n"
+        "2,2\n"
+        )
+
+    file = tmpdir_factory.mktemp('oeem_etl_operator_test').join('proj_trace_csv.csv')
     file.write(data)
     return str(file)
 
@@ -178,4 +208,12 @@ def test_load_project_metadata_csv_operator(test_dag, sample_metadata_csv_data):
 
     task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
+def test_load_trace_csv_operator(test_dag, sample_trace_csv_data):
+    task = LoadTraceCSVOperator(
+        task_id='test_load_trace_csv',
+        filename=sample_trace_csv_data,
+        datastore_url='http://datastore',
+        access_token='token',
+        dag=test_dag)
 
+    task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
