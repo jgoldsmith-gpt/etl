@@ -1,13 +1,15 @@
 import pytest
 import os
 from datetime import datetime
-from airflow import DAG
+from airflow import DAG, settings
+from airflow.models import TaskInstance
 import json
 import csv
 import mock
 from oeem_etl.airflow.operators import *
 from oeem_etl.requester import Requester
 from oeem_etl import constants
+from oeem_etl.airflow.hooks import GCSHook
 
 DEFAULT_DATE = datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
@@ -22,11 +24,29 @@ class MockResponse(object):
         ]
 
 
+class MockGCSHook(object):
+    def _authorize(self):
+        pass
+
+    def download(self, bucket, object, filename):
+        return "test bytes"
+
+    def upload(self, bucket, object, filename):
+        pass
+
+
 @pytest.fixture(autouse=True)
 def pass_datastore_requests(monkeypatch):
     response = MockResponse()
     response.status_code = 200
     monkeypatch.setattr(Requester, 'upload_chunk', lambda x, y, z: response)
+
+@pytest.fixture(autouse=True)
+def mocK_gcs_hook(monkeypatch):
+    hook = MockGCSHook()
+    monkeypatch.setattr(GCSHook, '_authorize', hook._authorize)
+    monkeypatch.setattr(GCSHook, 'download', hook.download)
+    monkeypatch.setattr(GCSHook, 'upload', hook.upload)
 
 @pytest.fixture
 def test_dag():
@@ -217,3 +237,32 @@ def test_load_trace_csv_operator(test_dag, sample_trace_csv_data):
         dag=test_dag)
 
     task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+def test_gcs_download_operator(test_dag):
+    task = GCSDownloadOperator(
+        task_id='test_gcs_download',
+        bucket='bucket',
+        object='object',
+        dag=test_dag)
+
+    task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+def test_gcs_upload_operator(test_dag, sample_csv_data):
+    task = GCSUploadOperator(
+        task_id='test_gcs_upload',
+        bucket='bucket',
+        filename=sample_csv_data,
+        target='target',
+        dag=test_dag)
+
+    task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+def test_check_task_states():
+    session = settings.Session()
+    tasks = session.query(TaskInstance)
+    assert tasks.count() == 7, "Expected 6 tasks total"
+    for task in tasks:
+        assert task.state == "success", "Expected success state"
+    session.close()
+
+
