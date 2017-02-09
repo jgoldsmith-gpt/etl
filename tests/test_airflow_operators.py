@@ -1,11 +1,11 @@
 import pytest
 import os
-from datetime import datetime
-from airflow import DAG, settings
-from airflow.models import TaskInstance
 import json
 import csv
 import mock
+from datetime import datetime
+from airflow import DAG, settings
+from airflow.models import Connection, TaskInstance
 from oeem_etl.airflow.operators import *
 from oeem_etl.requester import Requester
 from oeem_etl import constants
@@ -48,6 +48,26 @@ class MockGCSHook(object):
 
     def upload(self, bucket, object, filename):
         pass
+
+
+@pytest.fixture(scope='session', autouse=True)
+def create_default_gcs_connection():
+    session = settings.Session()
+
+    # check existing connections
+    connections = session.query(Connection).filter(Connection.conn_id == 'google_cloud_storage_default')
+    if connections.count() > 0:
+        print("Default GCS connection already configured.")
+    else:
+        print("Setting up GCS default connection")
+        connection = Connection()
+        connection.conn_id = 'google_cloud_storage_default'
+        connection.conn_type = 'google_cloud_storage'
+        session.add(connection)
+        session.commit()
+        print("Complete")
+
+    session.close()
 
 
 @pytest.fixture(autouse=True)
