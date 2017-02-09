@@ -1,6 +1,7 @@
 from airflow.operators.sensors import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
 from oeem_etl.airflow.hooks import GCSHook
+from googleapiclient import errors
 import logging
 
 
