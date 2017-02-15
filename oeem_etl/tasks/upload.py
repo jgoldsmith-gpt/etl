@@ -99,7 +99,7 @@ def bulk_load_trace_csv(f, method="upsert", skip_trace_records=False):
         return True
 
     unique_traces = list(set([
-        (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+        (d["trace_id"], d["interpretation"], d["unit"], d.get("interval", None)) for d in data
     ]))
 
     trace_data = [
@@ -107,6 +107,7 @@ def bulk_load_trace_csv(f, method="upsert", skip_trace_records=False):
             "trace_id": trace[0],
             "interpretation": trace[1],
             "unit": trace[2],
+            "interval": trace[3],
             "added": datetime.utcnow().isoformat(),
             "updated": datetime.utcnow().isoformat(),
         } for trace in unique_traces
@@ -116,7 +117,7 @@ def bulk_load_trace_csv(f, method="upsert", skip_trace_records=False):
         constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
 
     if skip_trace_records:
-        return trace_response.status_code == 200
+        return trace_response.status_code < 300
 
     trace_pks_by_id = {
         record["trace_id"]: record["id"]
@@ -230,7 +231,7 @@ class LoadProjects(luigi.WrapperTask):
 class LoadTraceCSV(luigi.Task):
     path = luigi.Parameter()
     method = luigi.Parameter(default="upsert")
-    skip_trace_records = luigi.BooleanParameter(
+    skip_trace_records = luigi.BoolParameter(
         default=False, 
         description="Only upsert Trace metadata if True")
 
@@ -253,7 +254,7 @@ class LoadTraceCSV(luigi.Task):
 
 class LoadTraces(luigi.WrapperTask):
     method = luigi.Parameter(default="upsert")
-    skip_trace_records = luigi.BooleanParameter(
+    skip_trace_records = luigi.BoolParameter(
         default=False, 
         description="Only upsert Trace metadata if True")
 
