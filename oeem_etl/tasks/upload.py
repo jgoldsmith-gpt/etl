@@ -89,7 +89,7 @@ def bulk_load_project_metadata_csv(f):
         success.append(response.status_code == 200)
     return all(success)
 
-def bulk_load_trace_csv(f, method="upsert"):
+def bulk_load_trace_csv(f, method="upsert", skip_trace_records=False):
     requester = Requester(config.oeem.url, config.oeem.access_token)
 
     try:
@@ -114,6 +114,9 @@ def bulk_load_trace_csv(f, method="upsert"):
 
     trace_response = requester.post(
         constants.TRACE_BULK_UPSERT_VERBOSE_URL, trace_data)
+
+    if skip_trace_records:
+        return trace_response.status_code == 200
 
     trace_pks_by_id = {
         record["trace_id"]: record["id"]
@@ -227,6 +230,9 @@ class LoadProjects(luigi.WrapperTask):
 class LoadTraceCSV(luigi.Task):
     path = luigi.Parameter()
     method = luigi.Parameter(default="upsert")
+    skip_trace_records = luigi.BooleanParameter(
+        default=False, 
+        description="Only upsert Trace metadata if True")
 
     def requires(self):
         return FetchFile(self.path)
@@ -237,7 +243,7 @@ class LoadTraceCSV(luigi.Task):
         with target.open('w') as f: pass
 
     def run(self):
-        success = bulk_load_trace_csv(self.input().open('r'), self.method)
+        success = bulk_load_trace_csv(self.input().open('r'), self.method, self.skip_trace_records)
         if success:
             self.write_flag()
 
@@ -247,11 +253,17 @@ class LoadTraceCSV(luigi.Task):
 
 class LoadTraces(luigi.WrapperTask):
     method = luigi.Parameter(default="upsert")
+    skip_trace_records = luigi.BooleanParameter(
+        default=False, 
+        description="Only upsert Trace metadata if True")
 
     def requires(self):
         paths = config.oeem.storage.get_existing_paths(
             config.oeem.OEEM_FORMAT_TRACE_OUTPUT_DIR)
-        return [LoadTraceCSV(path, self.method) for path in paths]
+        return [
+            LoadTraceCSV(path, self.method, skip_trace_records=self.skip_trace_records) 
+            for path in paths
+        ]
 
 
 class LoadProjectTraceMappingCSV(luigi.Task):
