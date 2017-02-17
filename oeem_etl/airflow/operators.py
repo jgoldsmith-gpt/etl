@@ -4,6 +4,7 @@ from oeem_etl.airflow.hooks import GCSHook
 from oeem_etl.requester import Requester
 from oeem_etl import constants
 import os
+import shutil
 import json
 import csv
 import logging
@@ -11,6 +12,7 @@ import dateutil
 from datetime import datetime
 import glob
 import pandas as pd
+import re
 
 
 class LoadProjectCSVOperator(BaseOperator):
@@ -558,6 +560,95 @@ class AuditFormattedDataOperator(BaseOperator):
 
         with open(self.audit_results_file, 'w') as f_out:
             f_out.write(json.dumps(task_output, indent=2))
+
+
+class FetchFileOperator(BaseOperator):
+    """
+    Examines url to fetch file to a temporary or otherwise specified location
+    """
+    ui_color = '#d9f78f'
+
+    @apply_defaults
+    def __init__(self,
+                 url,
+                 filename=False,
+                 store_to_xcom_key=False,
+                 gcs_conn_id='GCS_DEFAULT',
+                 *args, **kwargs):
+        super(FetchFileOperator, self).__init__(*args, **kwargs)
+        self.url = url
+        self.filename = filename
+        self.store_to_xcom_key = store_to_xcom_key
+        self.gcs_conn_id = gcs_conn_id
+
+    def execute(self, context):
+        url = self.url
+        file_bytes = None
+
+        if url.startswith("/"):
+            logging.info("Fetching local file")
+            with open(url, 'rb') as f_in:
+                file_bytes = f_in.read()
+            if self.filename:
+                with open(self.filename, 'wb') as f_out:
+                    f_out.write(file_bytes)
+
+        elif url.startswith("gs://"):
+            match = re.search(r'^gs://(.*?)/(.*)$', url)
+            bucket = match.group(1)
+            obj = match.group(2)
+            logging.info("Fetching GCS file {} from bucket {}".format(obj, bucket))
+            hook = GCSHook(conn_id=self.gcs_conn_id)
+            file_bytes = hook.download(bucket=bucket, object=obj, filename=self.filename)
+
+        else:
+            raise RuntimeError('Unrecognized/unsupported url format')
+
+        logging.info("Fetch complete")
+
+        if self.store_to_xcom_key:
+            if sys.getsizeof(file_bytes) < 48000:
+                context['ti'].xcom_push(key=self.store_to_xcom_key, value=file_bytes)
+            else:
+                raise RuntimeError('The size of the fetched file is too large for XCom')
+
+
+class StoreFileOperator(BaseOperator):
+    """
+    Takes local file and stores it based on url
+    """
+    ui_color = '#d9f78f'
+
+    @apply_defaults
+    def __init__(self,
+                 filename,
+                 url,
+                 gcs_conn_id='GCS_DEFAULT',
+                 *args, **kwargs):
+        super(StoreFileOperator, self).__init__(*args, **kwargs)
+        self.filename = filename
+        self.url = url
+        self.gcs_conn_id = gcs_conn_id
+
+    def execute(self, context):
+        url = self.url
+
+        if url.startswith("/"):
+            logging.info("Storing file locally")
+            shutil.copy(self.filename, url)
+
+        elif url.startswith("gs://"):
+            match = re.search(r'^gs://(.*?)/(.*)$', url)
+            bucket = match.group(1)
+            obj = match.group(2)
+            logging.info("Storing file in GCS bucket {} target {}".format(bucket, obj))
+            hook = GCSHook(conn_id=self.gcs_conn_id)
+            hook.upload(bucket=bucket, object=obj, filename=self.filename)
+
+        else:
+            raise RuntimeError('Unrecognized/unsupported url format')
+
+        logging.info("Store complete")
 
 
 class GCSDownloadOperator(BaseOperator):
