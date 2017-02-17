@@ -15,7 +15,7 @@ class GCSFileSensor(BaseSensorOperator):
     def __init__(self, 
                  bucket, 
                  object, 
-                 gcs_conn_id='google_cloud_storage_default',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args, 
                  **kwargs):
         """

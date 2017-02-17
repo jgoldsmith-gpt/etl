@@ -663,7 +663,7 @@ class GCSDownloadOperator(BaseOperator):
                  object,
                  filename=False,
                  store_to_xcom_key=False,
-                 gcs_conn_id='google_cloud_storage_default',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args, **kwargs):
         super(GCSDownloadOperator, self).__init__(*args, **kwargs)
         self.bucket = bucket
@@ -695,7 +695,7 @@ class GCSUploadOperator(BaseOperator):
                  filename,
                  target,
                  bucket,
-                 gcs_conn_id='google_cloud_storage_default',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args,
                  **kwargs):
         """

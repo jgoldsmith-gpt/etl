@@ -50,24 +50,24 @@ class MockGCSHook(object):
         pass
 
 
-@pytest.fixture(scope='session', autouse=True)
-def create_default_gcs_connection():
-    session = settings.Session()
+# @pytest.fixture(scope='session', autouse=True)
+# def create_default_gcs_connection():
+#     session = settings.Session()
 
-    # check existing connections
-    connections = session.query(Connection).filter(Connection.conn_id == 'google_cloud_storage_default')
-    if connections.count() > 0:
-        print("Default GCS connection already configured.")
-    else:
-        print("Setting up GCS default connection")
-        connection = Connection()
-        connection.conn_id = 'google_cloud_storage_default'
-        connection.conn_type = 'google_cloud_storage'
-        session.add(connection)
-        session.commit()
-        print("Complete")
+#     # check existing connections
+#     connections = session.query(Connection).filter(Connection.conn_id == 'google_cloud_storage_default')
+#     if connections.count() > 0:
+#         print("Default GCS connection already configured.")
+#     else:
+#         print("Setting up GCS default connection")
+#         connection = Connection()
+#         connection.conn_id = 'google_cloud_storage_default'
+#         connection.conn_type = 'google_cloud_storage'
+#         session.add(connection)
+#         session.commit()
+#         print("Complete")
 
-    session.close()
+#     session.close()
 
 
 @pytest.fixture(autouse=True)
@@ -363,10 +363,26 @@ def test_audit_operator(test_dag,
 
     task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
+def test_fetch_file_operator(test_dag, sample_csv_data):
+    print("YO: {}".format(sample_csv_data))
+    local_task = FetchFileOperator(
+        task_id='test_local_fetch_file',
+        url=sample_csv_data,
+        dag=test_dag)
+
+    local_task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+    gcs_task = FetchFileOperator(
+        task_id='test_gcs_fetch_file',
+        url="gs://{}".format(sample_csv_data),
+        dag=test_dag)
+
+    gcs_task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
 def test_check_task_states():
     session = settings.Session()
     tasks = session.query(TaskInstance)
-    assert tasks.count() == 9, "Expected 9 tasks total"
+    assert tasks.count() == 11, "Expected 11 tasks total"
     for task in tasks:
         assert task.state == "success", "Expected success state for {}".format(task.task_id)
     session.close()
