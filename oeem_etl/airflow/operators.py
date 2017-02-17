@@ -573,7 +573,7 @@ class FetchFileOperator(BaseOperator):
                  url,
                  filename=False,
                  store_to_xcom_key=False,
-                 gcs_conn_id='GCS_DEFAULT',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args, **kwargs):
         super(FetchFileOperator, self).__init__(*args, **kwargs)
         self.url = url
@@ -623,7 +623,7 @@ class StoreFileOperator(BaseOperator):
     def __init__(self,
                  filename,
                  url,
-                 gcs_conn_id='GCS_DEFAULT',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args, **kwargs):
         super(StoreFileOperator, self).__init__(*args, **kwargs)
         self.filename = filename
