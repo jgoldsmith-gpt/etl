@@ -920,8 +920,8 @@ class TranslateCSVOperator(BaseOperator):
                                 missing_field = True
                                 task_output['skipped_records'].append(row)
                                 break
-                            if missing_field:
-                                continue
+                        if missing_field:
+                            continue
 
                     # Step 5 - add extra fields
                     for key in extra_fields:
