@@ -800,6 +800,7 @@ class TranslateCSVOperator(BaseOperator):
                  preprocess_functions=[],
                  skip_if_missing=False,
                  field_filters={},
+                 key_field=None,
                  *args,
                  **kwargs):
         """
@@ -845,6 +846,7 @@ class TranslateCSVOperator(BaseOperator):
         self.preprocess_functions = preprocess_functions
         self.skip_if_missing = skip_if_missing
         self.field_filters = field_filters
+        self.key_field = key_field
 
     def execute(self, context):
         """
@@ -875,6 +877,9 @@ class TranslateCSVOperator(BaseOperator):
         preprocess_functions = self.preprocess_functions
         skip_if_missing = self.skip_if_missing
         field_filters = self.field_filters
+        key_field = self.key_field
+
+        key_field_values = []
 
         with open(in_file, 'r') as f_in:
             reader = csv.DictReader(f_in, skipinitialspace=True)
@@ -898,6 +903,14 @@ class TranslateCSVOperator(BaseOperator):
                                     skip_row = True
                     if skip_row:
                         continue
+
+                    # Step 1.6 - check key field
+                    if key_field:
+                        key_field_value = row[key_field]
+                        if key_field_value not in key_field_values:
+                            key_field_values.append(key_field_value)
+                        else:
+                            continue
 
                     for key in row.keys():
                         # Step 2 - map fields in field_map as is
