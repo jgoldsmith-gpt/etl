@@ -1,5 +1,6 @@
 import requests
 import os
+import logging
 
 class Requester(object):
     """Makes datastore API requests.
@@ -83,3 +84,23 @@ class Requester(object):
                           json=data,
                           headers=self.headers)
         return r
+
+    def upload_chunk(self, resource, data, retries=5):
+        retry = 0
+        loaded = False
+        while not loaded:
+            try:
+                retry += 1
+                r = requests.post(self.url + '/api/v1/' + resource,
+                                  json=data,
+                                  headers=self.headers)
+                loaded = True
+            except requests.exceptions.SSLError:
+                if retry > retries:
+                    raise
+                logging.info("Connection reset, retry {}".format(retry))
+                continue
+            break
+        return r
+
+
