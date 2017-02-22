@@ -34,14 +34,4 @@ class GCSFileSensor(BaseSensorOperator):
     def poke(self, context):
         hook = GCSHook(conn_id=self.gcs_conn_id)
         logging.info('Poking: ' + self.object + ' in ' + self.bucket)
-        service = hook.get_conn()
-        try:
-            service \
-                .objects() \
-                .get(bucket=self.bucket, object=self.object) \
-                .execute()
-            return True
-        except errors.HttpError as ex:
-            if ex.resp['status'] == '404':
-                return False
-            raise
+        return hook.exists(self.bucket, self.object)

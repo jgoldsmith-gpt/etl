@@ -1,4 +1,5 @@
 import pytest
+import mock
 from datetime import datetime
 from airflow import DAG, settings
 from airflow.models import TaskInstance
@@ -10,6 +11,19 @@ DEFAULT_DATE = datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
 TEST_DAG_ID = 'unit_test_dag'
 
+
+class MockGCSHook(object):
+    def _authorize(self):
+        pass
+
+    def exists(self, bucket, object):
+        return False
+
+@pytest.fixture(autouse=True)
+def mock_gcs_hook(monkeypatch):
+    hook = MockGCSHook()
+    monkeypatch.setattr(GCSHook, '_authorize', hook._authorize)
+    monkeypatch.setattr(GCSHook, 'exists', hook.exists)
 
 @pytest.fixture
 def test_dag():
@@ -25,7 +39,7 @@ def test_gcs_file_sensor(test_dag):
         task_id='test_gcs_file_sensor',
         bucket='bucket',
         object='object',
-        poke_interval=5,
+        poke_interval=10,
         timeout=5,
         dag=test_dag)
 

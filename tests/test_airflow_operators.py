@@ -59,7 +59,7 @@ def pass_datastore_requests(monkeypatch):
     monkeypatch.setattr(Requester, 'get', response.get)
 
 @pytest.fixture(autouse=True)
-def mocK_gcs_hook(monkeypatch):
+def mock_gcs_hook(monkeypatch):
     hook = MockGCSHook()
     monkeypatch.setattr(GCSHook, '_authorize', hook._authorize)
     monkeypatch.setattr(GCSHook, 'download', hook.download)
