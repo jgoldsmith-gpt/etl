@@ -183,105 +183,112 @@ class LoadTraceCSVOperator(BaseOperator):
     def execute(self, context):
         requester = Requester(self.datastore_url, self.access_token)
 
-        try:
-            data = pd.read_csv(self.filename, dtype=str).to_dict('records')
-        except ValueError:
-            return True
+        trace_row_count = 0
+        trace_record_row_count = 0
 
-        unique_traces = list(set([
-            (d["trace_id"], d["interpretation"], d["unit"]) for d in data
-        ]))
+        for chunk in pd.read_csv(self.filename, dtype=str, chunksize=self.bulk_size * 10):
+            try:
+                data = chunk.to_dict('records')
+            except ValueError:
+                return True
 
-        upload_data = []
-        row_count = 0
-        trace_pks_by_id = {}
+        # try:
+        #     data = pd.read_csv(self.filename, dtype=str).to_dict('records')
+        # except ValueError:
+        #     return True
 
-        for trace in unique_traces:
-            upload_data.append({
-                "trace_id": trace[0],
-                "interpretation": trace[1],
-                "unit": trace[2],
-                "added": datetime.utcnow().isoformat(),
-                "updated": datetime.utcnow().isoformat(),
-            })
+            unique_traces = list(set([
+                (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+            ]))
 
-            if len(upload_data) >= self.bulk_size / 2: # trace endpoint seems slow by comparison
+            upload_data = []
+            trace_pks_by_id = {}
+
+            for trace in unique_traces:
+                upload_data.append({
+                    "trace_id": trace[0],
+                    "interpretation": trace[1],
+                    "unit": trace[2],
+                    "added": datetime.utcnow().isoformat(),
+                    "updated": datetime.utcnow().isoformat(),
+                })
+
+                if len(upload_data) >= self.bulk_size / 2: # trace endpoint seems slow by comparison
+                    trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
+                    trace_row_count += len(upload_data)
+
+                    if trace_response.status_code < 200 or trace_response.status_code >= 300:
+                        raise RuntimeError('Bad response attempting to upsert traces')
+
+                    logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), trace_row_count))
+                    upload_data = []
+
+                    for record in trace_response.json():
+                        trace_pks_by_id[record["trace_id"]] = record["id"]
+
+            # leftovers
+            if len(upload_data) > 0:
                 trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
-                row_count += len(upload_data)
+                trace_row_count += len(upload_data)
 
                 if trace_response.status_code < 200 or trace_response.status_code >= 300:
                     raise RuntimeError('Bad response attempting to upsert traces')
 
-                logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), row_count))
+                logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), trace_row_count))
                 upload_data = []
 
                 for record in trace_response.json():
-                    trace_pks_by_id[record["trace_id"]] = record["id"]
+                        trace_pks_by_id[record["trace_id"]] = record["id"]
 
-        # leftovers
-        if len(upload_data) > 0:
-            trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
-            row_count += len(upload_data)
+            logging.info("Loaded {} trace rows".format(trace_row_count))
 
-            if trace_response.status_code < 200 or trace_response.status_code >= 300:
-                raise RuntimeError('Bad response attempting to upsert traces')
+            def maybe_float(value):
+                try: return float(value)
+                except: return np.nan
 
-            logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), row_count))
+            trace_record_data = [
+                {
+                    "trace_id": trace_pks_by_id[record["trace_id"]],
+                    "value": maybe_float(record["value"]),
+                    "start": record["start"],
+                    "estimated": record["estimated"],
+                }
+                for record in data
+            ]
+
             upload_data = []
+            for record in data:
+                trace_record = {
+                    "trace_id": trace_pks_by_id[record["trace_id"]],
+                    "value": maybe_float(record["value"]),
+                    "start": record["start"],
+                    "estimated": record["estimated"],
+                }
 
-            for record in trace_response.json():
-                    trace_pks_by_id[record["trace_id"]] = record["id"]
+                upload_data.append(trace_record)
+                if len(upload_data) >= self.bulk_size:
+                    if self.method == "upsert":
+                        response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                    elif self.method == "insert":
+                        response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                    if response.status_code < 200 or response.status_code >=300:
+                        raise RuntimeError('Bad response attempting to upsert')
+                    trace_record_row_count += len(upload_data)
+                    logging.info("Loaded {} trace records, {} so far".format(len(upload_data), trace_record_row_count))
+                    upload_data = []
 
-        logging.info("Loaded {} trace rows".format(row_count))
-
-        def maybe_float(value):
-            try: return float(value)
-            except: return np.nan
-
-        trace_record_data = [
-            {
-                "trace_id": trace_pks_by_id[record["trace_id"]],
-                "value": maybe_float(record["value"]),
-                "start": record["start"],
-                "estimated": record["estimated"],
-            }
-            for record in data
-        ]
-
-        upload_data = []
-        rows_loaded = 0
-        for record in data:
-            trace_record = {
-                "trace_id": trace_pks_by_id[record["trace_id"]],
-                "value": maybe_float(record["value"]),
-                "start": record["start"],
-                "estimated": record["estimated"],
-            }
-
-            upload_data.append(trace_record)
-            if len(upload_data) >= self.bulk_size:
+            # load leftovers
+            if len(upload_data) > 0:
                 if self.method == "upsert":
                     response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
                 elif self.method == "insert":
                     response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
                 if response.status_code < 200 or response.status_code >=300:
                     raise RuntimeError('Bad response attempting to upsert')
-                rows_loaded += len(upload_data)
-                logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
-                upload_data = []
+                trace_record_row_count += len(upload_data)
+                logging.info("Loaded {} trace records, {} so far".format(len(upload_data), trace_record_row_count))
 
-        # load leftovers
-        if len(upload_data) > 0:
-            if self.method == "upsert":
-                response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
-            elif self.method == "insert":
-                response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
-            if response.status_code < 200 or response.status_code >=300:
-                raise RuntimeError('Bad response attempting to upsert')
-            rows_loaded += len(upload_data)
-            logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
-
-        logging.info("Completed loading {} trace records".format(rows_loaded))
+            logging.info("Completed loading {} trace records".format(trace_record_row_count))
 
 
 class LoadProjectTraceMapCSVOperator(BaseOperator):
