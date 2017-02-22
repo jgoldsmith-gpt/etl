@@ -25,6 +25,7 @@ def test_gcs_file_sensor(test_dag):
         task_id='test_gcs_file_sensor',
         bucket='bucket',
         object='object',
+        poke_interval=5,
         timeout=5,
         dag=test_dag)
 

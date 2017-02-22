@@ -4,6 +4,7 @@ from oeem_etl.airflow.hooks import GCSHook
 from oeem_etl.requester import Requester
 from oeem_etl import constants
 import os
+import shutil
 import json
 import csv
 import logging
@@ -11,6 +12,7 @@ import dateutil
 from datetime import datetime
 import glob
 import pandas as pd
+import re
 
 
 class LoadProjectCSVOperator(BaseOperator):
@@ -181,105 +183,107 @@ class LoadTraceCSVOperator(BaseOperator):
     def execute(self, context):
         requester = Requester(self.datastore_url, self.access_token)
 
-        try:
-            data = pd.read_csv(self.filename, dtype=str).to_dict('records')
-        except ValueError:
-            return True
+        trace_row_count = 0
+        trace_record_row_count = 0
 
-        unique_traces = list(set([
-            (d["trace_id"], d["interpretation"], d["unit"]) for d in data
-        ]))
+        for chunk in pd.read_csv(self.filename, dtype=str, chunksize=self.bulk_size * 10):
+            try:
+                data = chunk.to_dict('records')
+            except ValueError:
+                return True
 
-        upload_data = []
-        row_count = 0
-        trace_pks_by_id = {}
+            unique_traces = list(set([
+                (d["trace_id"], d["interpretation"], d["unit"]) for d in data
+            ]))
 
-        for trace in unique_traces:
-            upload_data.append({
-                "trace_id": trace[0],
-                "interpretation": trace[1],
-                "unit": trace[2],
-                "added": datetime.utcnow().isoformat(),
-                "updated": datetime.utcnow().isoformat(),
-            })
+            upload_data = []
+            trace_pks_by_id = {}
 
-            if len(upload_data) >= self.bulk_size / 2: # trace endpoint seems slow by comparison
+            for trace in unique_traces:
+                upload_data.append({
+                    "trace_id": trace[0],
+                    "interpretation": trace[1],
+                    "unit": trace[2],
+                    "added": datetime.utcnow().isoformat(),
+                    "updated": datetime.utcnow().isoformat(),
+                })
+
+                if len(upload_data) >= self.bulk_size / 2: # trace endpoint seems slow by comparison
+                    trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
+                    trace_row_count += len(upload_data)
+
+                    if trace_response.status_code < 200 or trace_response.status_code >= 300:
+                        raise RuntimeError('Bad response attempting to upsert traces')
+
+                    logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), trace_row_count))
+                    upload_data = []
+
+                    for record in trace_response.json():
+                        trace_pks_by_id[record["trace_id"]] = record["id"]
+
+            # leftovers
+            if len(upload_data) > 0:
                 trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
-                row_count += len(upload_data)
+                trace_row_count += len(upload_data)
 
                 if trace_response.status_code < 200 or trace_response.status_code >= 300:
                     raise RuntimeError('Bad response attempting to upsert traces')
 
-                logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), row_count))
+                logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), trace_row_count))
                 upload_data = []
 
                 for record in trace_response.json():
-                    trace_pks_by_id[record["trace_id"]] = record["id"]
+                        trace_pks_by_id[record["trace_id"]] = record["id"]
 
-        # leftovers
-        if len(upload_data) > 0:
-            trace_response = requester.upload_chunk(constants.TRACE_BULK_UPSERT_VERBOSE_URL, upload_data)
-            row_count += len(upload_data)
+            logging.info("Loaded {} trace rows".format(trace_row_count))
 
-            if trace_response.status_code < 200 or trace_response.status_code >= 300:
-                raise RuntimeError('Bad response attempting to upsert traces')
+            def maybe_float(value):
+                try: return float(value)
+                except: return np.nan
 
-            logging.info("Loaded {} trace rows, {} so far".format(len(upload_data), row_count))
+            trace_record_data = [
+                {
+                    "trace_id": trace_pks_by_id[record["trace_id"]],
+                    "value": maybe_float(record["value"]),
+                    "start": record["start"],
+                    "estimated": record["estimated"],
+                }
+                for record in data
+            ]
+
             upload_data = []
+            for record in data:
+                trace_record = {
+                    "trace_id": trace_pks_by_id[record["trace_id"]],
+                    "value": maybe_float(record["value"]),
+                    "start": record["start"],
+                    "estimated": record["estimated"],
+                }
 
-            for record in trace_response.json():
-                    trace_pks_by_id[record["trace_id"]] = record["id"]
+                upload_data.append(trace_record)
+                if len(upload_data) >= self.bulk_size:
+                    if self.method == "upsert":
+                        response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
+                    elif self.method == "insert":
+                        response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
+                    if response.status_code < 200 or response.status_code >=300:
+                        raise RuntimeError('Bad response attempting to upsert')
+                    trace_record_row_count += len(upload_data)
+                    logging.info("Loaded {} trace records, {} so far".format(len(upload_data), trace_record_row_count))
+                    upload_data = []
 
-        logging.info("Loaded {} trace rows".format(row_count))
-
-        def maybe_float(value):
-            try: return float(value)
-            except: return np.nan
-
-        trace_record_data = [
-            {
-                "trace_id": trace_pks_by_id[record["trace_id"]],
-                "value": maybe_float(record["value"]),
-                "start": record["start"],
-                "estimated": record["estimated"],
-            }
-            for record in data
-        ]
-
-        upload_data = []
-        rows_loaded = 0
-        for record in data:
-            trace_record = {
-                "trace_id": trace_pks_by_id[record["trace_id"]],
-                "value": maybe_float(record["value"]),
-                "start": record["start"],
-                "estimated": record["estimated"],
-            }
-
-            upload_data.append(trace_record)
-            if len(upload_data) >= self.bulk_size:
+            # load leftovers
+            if len(upload_data) > 0:
                 if self.method == "upsert":
                     response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
                 elif self.method == "insert":
                     response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
                 if response.status_code < 200 or response.status_code >=300:
                     raise RuntimeError('Bad response attempting to upsert')
-                rows_loaded += len(upload_data)
-                logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
-                upload_data = []
+                trace_record_row_count += len(upload_data)
+                logging.info("Loaded {} trace records, {} so far".format(len(upload_data), trace_record_row_count))
 
-        # load leftovers
-        if len(upload_data) > 0:
-            if self.method == "upsert":
-                response = requester.upload_chunk(constants.TRACE_RECORD_BULK_UPSERT_URL, upload_data)
-            elif self.method == "insert":
-                response = requester.upload_chunk(constants.TRACE_RECORD_BULK_INSERT_URL, upload_data)
-            if response.status_code < 200 or response.status_code >=300:
-                raise RuntimeError('Bad response attempting to upsert')
-            rows_loaded += len(upload_data)
-            logging.info("Loaded {} trace records, {} so far".format(len(upload_data), rows_loaded))
-
-        logging.info("Completed loading {} trace records".format(rows_loaded))
+            logging.info("Completed loading {} trace records".format(trace_record_row_count))
 
 
 class LoadProjectTraceMapCSVOperator(BaseOperator):
@@ -560,6 +564,95 @@ class AuditFormattedDataOperator(BaseOperator):
             f_out.write(json.dumps(task_output, indent=2))
 
 
+class FetchFileOperator(BaseOperator):
+    """
+    Examines url to fetch file to a temporary or otherwise specified location
+    """
+    ui_color = '#d9f78f'
+
+    @apply_defaults
+    def __init__(self,
+                 url,
+                 filename=False,
+                 store_to_xcom_key=False,
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
+                 *args, **kwargs):
+        super(FetchFileOperator, self).__init__(*args, **kwargs)
+        self.url = url
+        self.filename = filename
+        self.store_to_xcom_key = store_to_xcom_key
+        self.gcs_conn_id = gcs_conn_id
+
+    def execute(self, context):
+        url = self.url
+        file_bytes = None
+
+        if url.startswith("/"):
+            logging.info("Fetching local file")
+            with open(url, 'rb') as f_in:
+                file_bytes = f_in.read()
+            if self.filename:
+                with open(self.filename, 'wb') as f_out:
+                    f_out.write(file_bytes)
+
+        elif url.startswith("gs://"):
+            match = re.search(r'^gs://(.*?)/(.*)$', url)
+            bucket = match.group(1)
+            obj = match.group(2)
+            logging.info("Fetching GCS file {} from bucket {}".format(obj, bucket))
+            hook = GCSHook(conn_id=self.gcs_conn_id)
+            file_bytes = hook.download(bucket=bucket, object=obj, filename=self.filename)
+
+        else:
+            raise RuntimeError('Unrecognized/unsupported url format')
+
+        logging.info("Fetch complete")
+
+        if self.store_to_xcom_key:
+            if sys.getsizeof(file_bytes) < 48000:
+                context['ti'].xcom_push(key=self.store_to_xcom_key, value=file_bytes)
+            else:
+                raise RuntimeError('The size of the fetched file is too large for XCom')
+
+
+class StoreFileOperator(BaseOperator):
+    """
+    Takes local file and stores it based on url
+    """
+    ui_color = '#d9f78f'
+
+    @apply_defaults
+    def __init__(self,
+                 filename,
+                 url,
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
+                 *args, **kwargs):
+        super(StoreFileOperator, self).__init__(*args, **kwargs)
+        self.filename = filename
+        self.url = url
+        self.gcs_conn_id = gcs_conn_id
+
+    def execute(self, context):
+        url = self.url
+
+        if url.startswith("/"):
+            logging.info("Storing file locally")
+            shutil.copy(self.filename, url)
+
+        elif url.startswith("gs://"):
+            match = re.search(r'^gs://(.*?)/(.*)$', url)
+            bucket = match.group(1)
+            obj = match.group(2)
+            logging.info("Storing file in GCS bucket {} target {}".format(bucket, obj))
+            hook = GCSHook(conn_id=self.gcs_conn_id)
+            hook.upload(bucket=bucket, object=obj, filename=self.filename)
+
+        else:
+            raise RuntimeError('Unrecognized/unsupported url format')
+
+        logging.info("Store complete")
+
+
 class GCSDownloadOperator(BaseOperator):
     """
     Downloads a file from GCS
@@ -572,7 +665,7 @@ class GCSDownloadOperator(BaseOperator):
                  object,
                  filename=False,
                  store_to_xcom_key=False,
-                 gcs_conn_id='google_cloud_storage_default',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args, **kwargs):
         super(GCSDownloadOperator, self).__init__(*args, **kwargs)
         self.bucket = bucket
@@ -604,7 +697,7 @@ class GCSUploadOperator(BaseOperator):
                  filename,
                  target,
                  bucket,
-                 gcs_conn_id='google_cloud_storage_default',
+                 gcs_conn_id='GOOGLE_CLOUD_STORAGE_DEFAULT',
                  *args,
                  **kwargs):
         """
@@ -709,6 +802,7 @@ class TranslateCSVOperator(BaseOperator):
                  preprocess_functions=[],
                  skip_if_missing=False,
                  field_filters={},
+                 key_field=None,
                  *args,
                  **kwargs):
         """
@@ -754,6 +848,7 @@ class TranslateCSVOperator(BaseOperator):
         self.preprocess_functions = preprocess_functions
         self.skip_if_missing = skip_if_missing
         self.field_filters = field_filters
+        self.key_field = key_field
 
     def execute(self, context):
         """
@@ -784,6 +879,9 @@ class TranslateCSVOperator(BaseOperator):
         preprocess_functions = self.preprocess_functions
         skip_if_missing = self.skip_if_missing
         field_filters = self.field_filters
+        key_field = self.key_field
+
+        key_field_values = []
 
         with open(in_file, 'r') as f_in:
             reader = csv.DictReader(f_in, skipinitialspace=True)
@@ -808,6 +906,14 @@ class TranslateCSVOperator(BaseOperator):
                     if skip_row:
                         continue
 
+                    # Step 1.6 - check key field
+                    if key_field:
+                        key_field_value = row[key_field]
+                        if key_field_value not in key_field_values:
+                            key_field_values.append(key_field_value)
+                        else:
+                            continue
+
                     for key in row.keys():
                         # Step 2 - map fields in field_map as is
                         if key in field_map:
@@ -829,8 +935,8 @@ class TranslateCSVOperator(BaseOperator):
                                 missing_field = True
                                 task_output['skipped_records'].append(row)
                                 break
-                            if missing_field:
-                                continue
+                        if missing_field:
+                            continue
 
                     # Step 5 - add extra fields
                     for key in extra_fields:
