@@ -192,11 +192,6 @@ class LoadTraceCSVOperator(BaseOperator):
             except ValueError:
                 return True
 
-        # try:
-        #     data = pd.read_csv(self.filename, dtype=str).to_dict('records')
-        # except ValueError:
-        #     return True
-
             unique_traces = list(set([
                 (d["trace_id"], d["interpretation"], d["unit"]) for d in data
             ]))
